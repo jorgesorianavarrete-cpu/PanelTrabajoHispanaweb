@@ -611,133 +611,179 @@ export default function SocialMediaApp() {
 
                 {/* Tab 1: Calendario */}
                 {activeTab === 'calendar' && (
-                    <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
-
-                        {/* Calendar Controls */}
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-4">
-                                <h2 className="text-xl font-bold text-slate-900 dark:text-white capitalize">{currentMonthYear}</h2>
-                                <div className="flex space-x-1 border border-slate-200 dark:border-white/10 rounded-lg p-0.5 bg-white dark:bg-[#0a0f1c]">
-                                    <button className="px-3 py-1 text-sm font-medium rounded-md bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white">Semana</button>
-                                    <button className="px-3 py-1 text-sm font-medium rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">Mes</button>
+                    <div className="max-w-7xl mx-auto flex gap-6 animate-in fade-in duration-500">
+                        {/* Calendar Sidebar */}
+                        <div className="w-64 shrink-0 space-y-6">
+                            <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl p-4 shadow-sm">
+                                <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                                    <BarChart2 className="w-4 h-4 text-blue-500" />
+                                    Categorías
+                                </h3>
+                                <div className="space-y-2">
+                                    {[
+                                        { label: 'Blog Articles', count: articles.length, color: 'bg-emerald-500' },
+                                        { label: 'Social Posts', count: posts.length, color: 'bg-blue-500' },
+                                        { label: 'Videos', count: 0, color: 'bg-red-500' },
+                                    ].map(cat => (
+                                        <div key={cat.label} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-2 h-2 rounded-full ${cat.color}`} />
+                                                <span className="text-xs text-slate-600 dark:text-slate-400">{cat.label}</span>
+                                            </div>
+                                            <span className="text-xs font-bold text-slate-400">{cat.count}</span>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 
-                            <div className="flex items-center space-x-3">
-                                <div className="flex bg-white dark:bg-[#0a0f1c] border border-slate-200 dark:border-white/10 rounded-lg p-1">
-                                    {[
-                                        { id: 'all', icon: Share2, color: 'text-slate-500' },
-                                        { id: 'instagram', icon: Instagram, color: 'text-pink-500' },
-                                        { id: 'linkedin', icon: Linkedin, color: 'text-blue-500' },
-                                        { id: 'facebook', icon: Facebook, color: 'text-blue-600' }
-                                    ].map((p: any) => (
-                                        <button
-                                            key={p.id}
-                                            onClick={() => setPlatformFilter(p.id as any)}
-                                            className={`p-2 rounded-md transition-colors ${platformFilter === p.id ? 'bg-slate-100 dark:bg-white/10 shadow-sm' : 'hover:bg-slate-50 dark:hover:bg-white/5'}`}
-                                        >
-                                            <p.icon className={`w-4 h-4 ${p.id === 'all' && platformFilter !== 'all' ? 'text-slate-400' : p.color}`} />
-                                        </button>
-                                    ))}
+                            <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl p-4 shadow-sm">
+                                <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-orange-500" />
+                                    Próximos Eventos
+                                </h3>
+                                <div className="space-y-4">
+                                    <div className="p-3 rounded-xl bg-orange-50 dark:bg-orange-500/10 border border-orange-100 dark:border-orange-500/20">
+                                        <p className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase">Mañana</p>
+                                        <p className="text-xs font-bold text-slate-900 dark:text-white mt-1">Lanzamiento Campaña</p>
+                                        <p className="text-[10px] text-slate-500 mt-0.5">Automático: 3 posts + 1 blog</p>
+                                    </div>
+                                    <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20">
+                                        <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">Vie, 14 Mar</p>
+                                        <p className="text-xs font-bold text-slate-900 dark:text-white mt-1">Revisión de Métricas</p>
+                                        <p className="text-[10px] text-slate-500 mt-0.5">Analizar engagement semanal</p>
+                                    </div>
                                 </div>
-                                <button onClick={() => setActiveTab('create')} className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 rounded-lg font-medium flex items-center hover:shadow-lg transition-all hover:-translate-y-0.5">
-                                    <Plus className="w-4 h-4 mr-2" />
-                                    Nuevo Post
-                                </button>
                             </div>
                         </div>
 
-                        {/* Calendar Grid (Weekly View Mockup) */}
-                        <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl shadow-sm overflow-hidden">
-                            <div className="grid grid-cols-5 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02]">
-                                {weekDays.map((day, i) => {
-                                    const isToday = day.toDateString() === new Date().toDateString();
-                                    const dayNum = day.getDate();
-                                    const dayLabel = `${DAY_NAMES[i]} ${dayNum}`;
-                                    return (
-                                        <div key={i} className={`p-4 text-center font-medium text-sm ${isToday ? 'text-pink-600 dark:text-pink-400 font-bold border-b-2 border-pink-500' : 'text-slate-600 dark:text-slate-300'} border-r border-slate-200 dark:border-white/10 last:border-0`}>
-                                            {dayLabel}
-                                        </div>
-                                    );
-                                })}
+                        {/* Calendar Main View */}
+                        <div className="flex-1 space-y-6">
+
+                            {/* Calendar Controls */}
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-4">
+                                    <h2 className="text-xl font-bold text-slate-900 dark:text-white capitalize">{currentMonthYear}</h2>
+                                    <div className="flex space-x-1 border border-slate-200 dark:border-white/10 rounded-lg p-0.5 bg-white dark:bg-[#0a0f1c]">
+                                        <button className="px-3 py-1 text-sm font-medium rounded-md bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white">Semana</button>
+                                        <button className="px-3 py-1 text-sm font-medium rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">Mes</button>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center space-x-3">
+                                    <div className="flex bg-white dark:bg-[#0a0f1c] border border-slate-200 dark:border-white/10 rounded-lg p-1">
+                                        {[
+                                            { id: 'all', icon: Share2, color: 'text-slate-500' },
+                                            { id: 'instagram', icon: Instagram, color: 'text-pink-500' },
+                                            { id: 'linkedin', icon: Linkedin, color: 'text-blue-500' },
+                                            { id: 'facebook', icon: Facebook, color: 'text-blue-600' }
+                                        ].map((p: any) => (
+                                            <button
+                                                key={p.id}
+                                                onClick={() => setPlatformFilter(p.id as any)}
+                                                className={`p-2 rounded-md transition-colors ${platformFilter === p.id ? 'bg-slate-100 dark:bg-white/10 shadow-sm' : 'hover:bg-slate-50 dark:hover:bg-white/5'}`}
+                                            >
+                                                <p.icon className={`w-4 h-4 ${p.id === 'all' && platformFilter !== 'all' ? 'text-slate-400' : p.color}`} />
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <button onClick={() => setActiveTab('create')} className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 rounded-lg font-medium flex items-center hover:shadow-lg transition-all hover:-translate-y-0.5">
+                                        <Plus className="w-4 h-4 mr-2" />
+                                        Nuevo Post
+                                    </button>
+                                </div>
                             </div>
-                            <div className="grid grid-cols-5 min-h-[500px] divide-x divide-slate-200 dark:divide-white/10">
-                                {weekDays.map((day: Date, colIdx: number) => {
-                                    const dayPosts = posts.filter((p: any) => {
-                                        const pubDate = new Date(p.publish_at);
-                                        return pubDate.toDateString() === day.toDateString();
-                                    });
-                                    const dayArticles = articles.filter((a: any) => {
-                                        const pubDate = new Date(a.publish_at || a.created_at);
-                                        return pubDate.toDateString() === day.toDateString();
-                                    });
-                                    const allDayItems = [...dayPosts.map(p => ({ ...p, type: 'post' })), ...dayArticles.map(a => ({ ...a, type: 'article' }))];
 
-                                    return (
-                                        <div key={colIdx} className="p-2 space-y-2">
-                                            {allDayItems.sort((a, b) => new Date(a.publish_at || a.created_at).getTime() - new Date(b.publish_at || b.created_at).getTime()).map((item: any) => (
-                                                <div
-                                                    key={`${item.type}-${item.id}`}
-                                                    className={`bg-white dark:bg-[#0a0f1c] border-2 ${item.is_completed ? 'opacity-60 border-emerald-500/30' : item.status === 'Programado' ? 'border-pink-200 dark:border-pink-500/30 shadow-sm' : 'border-slate-200 dark:border-white/10'} rounded-xl p-3 hover:border-pink-500/50 transition-all relative overflow-hidden group`}
-                                                >
-                                                    {item.status === 'Programado' && !item.is_completed && <div className="absolute top-0 left-0 w-1 h-full bg-pink-500" />}
-                                                    {item.is_completed && <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />}
+                            {/* Calendar Grid (Weekly View Mockup) */}
+                            <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl shadow-sm overflow-hidden">
+                                <div className="grid grid-cols-5 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02]">
+                                    {weekDays.map((day, i) => {
+                                        const isToday = day.toDateString() === new Date().toDateString();
+                                        const dayNum = day.getDate();
+                                        const dayLabel = `${DAY_NAMES[i]} ${dayNum}`;
+                                        return (
+                                            <div key={i} className={`p-4 text-center font-medium text-sm ${isToday ? 'text-pink-600 dark:text-pink-400 font-bold border-b-2 border-pink-500' : 'text-slate-600 dark:text-slate-300'} border-r border-slate-200 dark:border-white/10 last:border-0`}>
+                                                {dayLabel}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="grid grid-cols-5 min-h-[500px] divide-x divide-slate-200 dark:divide-white/10">
+                                    {weekDays.map((day: Date, colIdx: number) => {
+                                        const dayPosts = posts.filter((p: any) => {
+                                            const pubDate = new Date(p.publish_at);
+                                            return pubDate.toDateString() === day.toDateString();
+                                        });
+                                        const dayArticles = articles.filter((a: any) => {
+                                            const pubDate = new Date(a.publish_at || a.created_at);
+                                            return pubDate.toDateString() === day.toDateString();
+                                        });
+                                        const allDayItems = [...dayPosts.map(p => ({ ...p, type: 'post' })), ...dayArticles.map(a => ({ ...a, type: 'article' }))];
 
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <div className="flex items-center space-x-1">
-                                                            {item.type === 'post' ? (
-                                                                <>
-                                                                    {(item.platforms as string[]).includes('instagram') && <Instagram className="w-3.5 h-3.5 text-pink-500" />}
-                                                                    {(item.platforms as string[]).includes('facebook') && <Facebook className="w-3.5 h-3.5 text-blue-600" />}
-                                                                    {(item.platforms as string[]).includes('linkedin') && <Linkedin className="w-3.5 h-3.5 text-blue-500" />}
-                                                                </>
-                                                            ) : (
-                                                                <FileEdit className="w-3.5 h-3.5 text-emerald-500" />
-                                                            )}
+                                        return (
+                                            <div key={colIdx} className="p-2 space-y-2">
+                                                {allDayItems.sort((a, b) => new Date(a.publish_at || a.created_at).getTime() - new Date(b.publish_at || b.created_at).getTime()).map((item: any) => (
+                                                    <div
+                                                        key={`${item.type}-${item.id}`}
+                                                        className={`bg-white dark:bg-[#0a0f1c] border-2 ${item.is_completed ? 'opacity-60 border-emerald-500/30' : item.status === 'Programado' ? 'border-pink-200 dark:border-pink-500/30 shadow-sm' : 'border-slate-200 dark:border-white/10'} rounded-xl p-3 hover:border-pink-500/50 transition-all relative overflow-hidden group`}
+                                                    >
+                                                        {item.status === 'Programado' && !item.is_completed && <div className="absolute top-0 left-0 w-1 h-full bg-pink-500" />}
+                                                        {item.is_completed && <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />}
+
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="flex items-center space-x-1">
+                                                                {item.type === 'post' ? (
+                                                                    <>
+                                                                        {(item.platforms as string[]).includes('instagram') && <Instagram className="w-3.5 h-3.5 text-pink-500" />}
+                                                                        {(item.platforms as string[]).includes('facebook') && <Facebook className="w-3.5 h-3.5 text-blue-600" />}
+                                                                        {(item.platforms as string[]).includes('linkedin') && <Linkedin className="w-3.5 h-3.5 text-blue-500" />}
+                                                                    </>
+                                                                ) : (
+                                                                    <FileEdit className="w-3.5 h-3.5 text-emerald-500" />
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    onClick={() => item.type === 'post' ? toggleCompletePost(item) : toggleCompleteArticle(item)}
+                                                                    className={`p-1 rounded-full transition-colors ${item.is_completed ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-white/10 text-slate-400 hover:text-emerald-500'}`}
+                                                                >
+                                                                    <Check className="w-3 h-3" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => item.type === 'post' ? handleDeletePost(item.id) : handleDeleteArticle(item.id)}
+                                                                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-400 hover:text-red-500 transition-all"
+                                                                >
+                                                                    <Trash2 className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex items-center gap-1">
+                                                        <p className={`text-xs font-medium line-clamp-3 ${item.is_completed ? 'line-through text-slate-400' : item.status === 'Programado' ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                            {item.type === 'post' ? item.content : item.title}
+                                                        </p>
+
+                                                        {item.type === 'post' && item.status === 'Publicado' && (
                                                             <button
-                                                                onClick={() => item.type === 'post' ? toggleCompletePost(item) : toggleCompleteArticle(item)}
-                                                                className={`p-1 rounded-full transition-colors ${item.is_completed ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-white/10 text-slate-400 hover:text-emerald-500'}`}
+                                                                onClick={(e: any) => { e.stopPropagation(); setSelectedPost(item); setIsInteractionsOpen(true); }}
+                                                                className="mt-3 w-full py-1.5 bg-pink-50 dark:bg-pink-500/10 text-pink-600 dark:text-pink-400 text-[10px] font-bold rounded-lg border border-pink-200 dark:border-pink-500/20 hover:bg-pink-100 transition-colors flex items-center justify-center shadow-sm"
                                                             >
-                                                                <Check className="w-3 h-3" />
+                                                                <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> Ver Interacciones
                                                             </button>
-                                                            <button
-                                                                onClick={() => item.type === 'post' ? handleDeletePost(item.id) : handleDeleteArticle(item.id)}
-                                                                className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-400 hover:text-red-500 transition-all"
-                                                            >
-                                                                <Trash2 className="w-3 h-3" />
-                                                            </button>
-                                                        </div>
+                                                        )}
                                                     </div>
-                                                    <p className={`text-xs font-medium line-clamp-3 ${item.is_completed ? 'line-through text-slate-400' : item.status === 'Programado' ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
-                                                        {item.type === 'post' ? item.content : item.title}
-                                                    </p>
-
-                                                    {item.type === 'post' && item.status === 'Publicado' && (
-                                                        <button
-                                                            onClick={(e: any) => { e.stopPropagation(); setSelectedPost(item); setIsInteractionsOpen(true); }}
-                                                            className="mt-3 w-full py-1.5 bg-pink-50 dark:bg-pink-500/10 text-pink-600 dark:text-pink-400 text-[10px] font-bold rounded-lg border border-pink-200 dark:border-pink-500/20 hover:bg-pink-100 transition-colors flex items-center justify-center shadow-sm"
-                                                        >
-                                                            <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> Ver Interacciones
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            ))}
-                                            {allDayItems.length === 0 && (
-                                                <button onClick={() => setActiveTab('create')} className="w-full h-16 border-2 border-dashed border-slate-200 dark:border-white/10 rounded-xl flex items-center justify-center text-slate-300 hover:text-pink-400 hover:border-pink-400/50 transition-colors">
-                                                    <Plus className="w-4 h-4" />
-                                                </button>
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                                ))}
+                                                {allDayItems.length === 0 && (
+                                                    <button onClick={() => setActiveTab('create')} className="w-full h-16 border-2 border-dashed border-slate-200 dark:border-white/10 rounded-xl flex items-center justify-center text-slate-300 hover:text-pink-400 hover:border-pink-400/50 transition-colors">
+                                                        <Plus className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* Tab 2: Crear Post (AI Editor Showcase) */}
                 {activeTab === 'create' && (
                     <div className="max-w-6xl mx-auto animate-in fade-in duration-500 flex h-[calc(100vh-12rem)] space-x-6">
 
@@ -927,7 +973,7 @@ export default function SocialMediaApp() {
                             <p className="text-xs text-slate-500 truncate">{selectedPost.content}</p>
                         </div>
                         <button onClick={() => setIsInteractionsOpen(false)} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-all">
-                            <XComp className="w-5 h-5" />
+                            <XIcon className="w-5 h-5" />
                         </button>
                     </div>
 
@@ -1046,7 +1092,7 @@ export default function SocialMediaApp() {
                     <div className="bg-white dark:bg-[#0f1629] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
                         <div className="p-6 border-b border-slate-200 dark:border-white/10 flex justify-between items-center">
                             <h2 className="text-xl font-bold text-slate-900 dark:text-white text-center">Configurar Frecuencia Semanal</h2>
-                            <button onClick={() => setIsFrequencyModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                            <button onClick={() => setIsFrequencyModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600"><XIcon className="w-5 h-5" /></button>
                         </div>
                         <div className="p-6 space-y-4">
                             <p className="text-xs text-slate-500 mb-4 text-center italic">Define cuántos contenidos generar y publicar automáticamente para {clientName}.</p>
@@ -1088,8 +1134,7 @@ export default function SocialMediaApp() {
     );
 }
 
-// Simple X icon for this scope
-function XComp(props: React.SVGProps<SVGSVGElement>) {
+function XIcon(props: React.SVGProps<SVGSVGElement>) {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
             <path d="M18 6 6 18" />

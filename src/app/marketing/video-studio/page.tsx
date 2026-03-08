@@ -6,14 +6,19 @@ import {
     UploadCloud, Volume2, VolumeX, ArrowRight, Play, Download, Clock,
     Image as ImageIcon, Zap, Clapperboard, Trash2, ChevronDown
 } from 'lucide-react';
-import { useMarketingContext } from '@/components/MarketingContext';
-
-import { ALL_VIDEO_MODELS } from '@/constants/models';
 import { useEffect } from 'react';
-
-
 import { useMarketingContext, MarketingAsset } from '@/components/MarketingContext';
 import { insforge } from '@/lib/insforge';
+import { ALL_VIDEO_MODELS } from '@/constants/models';
+
+interface Scene {
+    id: number;
+    visualPrompt: string;
+    animationPrompt: string;
+    hasSound: boolean;
+    imageUrl: string;
+    videoUrl: string | null;
+}
 
 
 // ─── Shared: Model Dropdown ──────────────────────────────────────────────────
