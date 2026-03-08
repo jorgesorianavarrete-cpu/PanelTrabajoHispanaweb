@@ -23,12 +23,13 @@ interface EventData {
 }
 
 const EVENT_TYPES = {
-    meeting: { label: 'Reunión', color: 'bg-blue-500' },
-    call: { label: 'Llamada', color: 'bg-emerald-500' },
-    appointment: { label: 'Cita', color: 'bg-orange-500' },
-    signing: { label: 'Firma', color: 'bg-violet-500' },
-    personal: { label: 'Personal', color: 'bg-pink-500' },
+    appointment: { label: 'Visita', color: 'bg-blue-500', icon: MapPin },
+    meeting: { label: 'Reunión', color: 'bg-purple-500', icon: Video },
+    call: { label: 'Llamada', color: 'bg-green-500', icon: Clock },
+    signing: { label: 'Firma', color: 'bg-orange-500', icon: Edit2 },
+    personal: { label: 'Personal', color: 'bg-red-500', icon: User },
 };
+
 
 export default function CalendarApp() {
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -41,6 +42,8 @@ export default function CalendarApp() {
     const [isSaving, setIsSaving] = useState(false);
     const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email?: string }>({ connected: false });
     const [isImporting, setIsImporting] = useState(false);
+    const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
 
     const [formData, setFormData] = useState<EventData>({
         title: '',
@@ -67,7 +70,6 @@ export default function CalendarApp() {
 
     const fetchEvents = async () => {
         setIsLoading(true);
-        // Start and end bounds for the current view to optimize query
         const startBound = view === 'month' ? startOfWeek(startOfMonth(currentDate), { weekStartsOn: 1 }) : startOfWeek(currentDate, { weekStartsOn: 1 });
         const endBound = view === 'month' ? endOfWeek(endOfMonth(currentDate), { weekStartsOn: 1 }) : endOfWeek(currentDate, { weekStartsOn: 1 });
 
@@ -82,6 +84,19 @@ export default function CalendarApp() {
         }
         setIsLoading(false);
     };
+
+    const filteredEvents = events.filter(e => selectedCategory === 'all' || e.event_type === selectedCategory);
+
+    const upcomingEvents = events
+        .filter(e => new Date(e.start_time) >= new Date())
+        .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
+        .slice(0, 5);
+
+    const eventStats = Object.keys(EVENT_TYPES).reduce((acc, key) => {
+        acc[key] = events.filter(e => e.event_type === key).length;
+        return acc;
+    }, {} as Record<string, number>);
+
 
     const checkGoogleStatus = async () => {
         try {
@@ -253,8 +268,9 @@ export default function CalendarApp() {
                 {/* Grid */}
                 <div className="flex-1 grid grid-cols-7 grid-rows-5 lg:grid-rows-6 auto-rows-fr overflow-y-auto">
                     {days.map((date, idx) => {
-                        const dayEvents = events.filter(e => isSameDay(new Date(e.start_time), date));
+                        const dayEvents = filteredEvents.filter(e => isSameDay(new Date(e.start_time), date));
                         const isCurrentMonth = isSameMonth(date, monthStart);
+
                         const isToday = isSameDay(date, new Date());
 
                         return (
@@ -344,8 +360,9 @@ export default function CalendarApp() {
                                 ))}
 
                                 {/* Events for this day */}
-                                {events.filter(e => isSameDay(new Date(e.start_time), date)).map(evt => {
+                                {filteredEvents.filter(e => isSameDay(new Date(e.start_time), date)).map(evt => {
                                     const start = new Date(evt.start_time);
+
                                     const end = new Date(evt.end_time);
                                     const topOffset = (start.getHours() * 60) + start.getMinutes();
                                     const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
@@ -443,14 +460,110 @@ export default function CalendarApp() {
                 <div className="w-32 hidden md:block"></div> {/* Spacer for symmetry */}
             </div>
 
-            {/* Grid Area */}
-            {isLoading && events.length === 0 ? (
-                <div className="flex-1 flex justify-center items-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            {/* Grid Area & Sidebar Container */}
+            <div className="flex-1 flex overflow-hidden">
+                <div className="flex-1 flex flex-col min-w-0">
+                    {/* Category Filters inside the content area */}
+                    <div className="px-6 py-4 flex flex-wrap gap-2 bg-white/30 dark:bg-black/10">
+                        <button
+                            onClick={() => setSelectedCategory('all')}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${selectedCategory === 'all'
+                                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600 shadow-sm'
+                                : 'text-slate-500 border-transparent hover:border-slate-200'
+                                }`}
+                        >
+                            Todos
+                        </button>
+                        {Object.entries(EVENT_TYPES).map(([key, val]) => (
+                            <button
+                                key={key}
+                                onClick={() => setSelectedCategory(key)}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 ${selectedCategory === key
+                                    ? `bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600 shadow-sm`
+                                    : 'text-slate-500 border-transparent hover:border-slate-200'
+                                    }`}
+                            >
+                                <span className={`w-2 h-2 rounded-full ${val.color}`} />
+                                {val.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {isLoading && events.length === 0 ? (
+                        <div className="flex-1 flex justify-center items-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                        </div>
+                    ) : (
+                        view === 'month' ? renderMonthView() : renderWeekView()
+                    )}
                 </div>
-            ) : (
-                view === 'month' ? renderMonthView() : renderWeekView()
-            )}
+
+                {/* Right Sidebar */}
+                <aside className="w-80 border-l border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 flex flex-col overflow-y-auto hidden xl:flex">
+                    <div className="p-6 space-y-8">
+                        {/* Upcoming Events */}
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">Próximos Eventos</h3>
+                            <div className="space-y-4">
+                                {upcomingEvents.length > 0 ? (
+                                    upcomingEvents.map(evt => (
+                                        <div key={evt.id}
+                                            onClick={() => openEditModal(evt)}
+                                            className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${EVENT_TYPES[evt.event_type].color}`} />
+                                                <div className="flex-1 min-w-0">
+                                                    <h4 className="font-bold text-sm text-slate-800 dark:text-white line-clamp-1 group-hover:text-blue-500 transition-colors">
+                                                        {evt.title}
+                                                    </h4>
+                                                    <div className="flex items-center text-[10px] text-slate-500 mt-1 gap-2">
+                                                        <Clock className="w-3 h-3" />
+                                                        {format(new Date(evt.start_time), 'd MMM, HH:mm', { locale: es })}
+                                                    </div>
+                                                    {evt.location && (
+                                                        <div className="flex items-center text-[10px] text-slate-500 mt-1 gap-2 truncate">
+                                                            <MapPin className="w-3 h-3" />
+                                                            {evt.location}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center">
+                                        <CalendarIcon className="w-10 h-10 text-slate-200 dark:text-slate-700 mx-auto mb-3" />
+                                        <p className="text-sm font-bold text-slate-400">No hay eventos próximos</p>
+                                        <p className="text-[10px] text-slate-500 mt-1">Crea tu primer evento</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Event Summary */}
+                        <div>
+                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Resumen de Eventos</h3>
+                            <div className="space-y-3">
+                                {Object.entries(EVENT_TYPES).map(([key, val]) => (
+                                    <div key={key} className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-8 h-8 rounded-lg ${val.color.replace('bg-', 'bg-')}/10 flex items-center justify-center`}>
+                                                <val.icon className={`w-4 h-4 ${val.color.replace('bg-', 'text-')}`} />
+                                            </div>
+                                            <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{val.label}</span>
+                                        </div>
+                                        <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center text-[10px] font-bold">
+                                            {eventStats[key] || 0}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+
 
             {/* Modal Crear/Editar */}
             {showModal && (

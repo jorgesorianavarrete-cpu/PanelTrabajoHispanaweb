@@ -56,6 +56,7 @@ export default function SocialMediaApp() {
     const [isInteractionsOpen, setIsInteractionsOpen] = useState(false);
     const [suggestedReplies, setSuggestedReplies] = useState<Record<string, string>>({});
     const [isSuggesting, setIsSuggesting] = useState<string | null>(null);
+    const [searchTopic, setSearchTopic] = useState('');
 
     const { width: interactionsWidth, startResizing: startResizingInteractions } = useResizable({
         initialWidth: 450,
@@ -141,6 +142,7 @@ export default function SocialMediaApp() {
     };
 
     const handleDeletePost = async (id: number) => {
+        if (!confirm('¿Estás seguro de que deseas eliminar esta publicación?')) return;
         await insforge.database.from('social_posts').delete().eq('id', id);
         setPosts(prev => prev.filter(p => p.id !== id));
     };
@@ -214,9 +216,10 @@ export default function SocialMediaApp() {
         try {
             const { data } = await insforge.functions.invoke('marketing-copilot', {
                 body: {
-                    action: 'get_suggestions',
+                    action: searchTopic ? 'search_ideas' : 'get_suggestions',
                     clientName: currentClient.name,
                     clientSector: currentClient.sector,
+                    topic: searchTopic,
                     textModel: aiSettings.default_social_model
                 }
             });
@@ -271,6 +274,7 @@ export default function SocialMediaApp() {
     };
 
     const handleDeleteArticle = async (id: number) => {
+        if (!confirm('¿Estás seguro de que deseas eliminar esta sugerencia?')) return;
         await insforge.database.from('social_articles').delete().eq('id', id);
         setArticles((prev: any[]) => prev.filter((article: any) => article.id !== id));
     };
@@ -398,17 +402,32 @@ export default function SocialMediaApp() {
                     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
                         <div className="flex justify-between items-center">
                             <div>
-                                <h2 className="text-xl font-bold text-slate-900 dark:text-white">Sugerencias de Contenido</h2>
-                                <p className="text-sm text-slate-500 mt-1">Artículos estratégicos generados por IA para {currentClient.name}</p>
+                                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    <Sparkles className="w-5 h-5 text-purple-500" />
+                                    Cazador de Tendencias & Títulos
+                                </h2>
+                                <p className="text-sm text-slate-500 mt-1">Busca temas virales o genera títulos magnéticos para {currentClient.name}</p>
                             </div>
-                            <button
-                                onClick={handleGenerateSuggestions}
-                                disabled={isSaving}
-                                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center hover:shadow-lg transition-all hover:-translate-y-0.5 disabled:opacity-50"
-                            >
-                                {isSaving ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Sparkles className="w-5 h-5 mr-2" />}
-                                Generar Nuevas Ideas
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <div className="relative group">
+                                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl blur opacity-20 group-hover:opacity-40 transition-opacity"></div>
+                                    <input
+                                        type="text"
+                                        value={searchTopic}
+                                        onChange={(e) => setSearchTopic(e.target.value)}
+                                        placeholder="Ej: Tendencias Inmobiliarias 2026"
+                                        className="relative w-80 bg-white dark:bg-[#0B1121] border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500/50 focus:outline-none transition-all"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleGenerateSuggestions}
+                                    disabled={isSaving}
+                                    className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-2.5 rounded-xl font-bold flex items-center hover:shadow-lg transition-all hover:-translate-y-0.5 disabled:opacity-50"
+                                >
+                                    {isSaving ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Wand2 className="w-5 h-5 mr-2" />}
+                                    {searchTopic ? 'Generar Títulos' : 'Sugerir Temas'}
+                                </button>
+                            </div>
                         </div>
 
                         {articles.length === 0 ? (
