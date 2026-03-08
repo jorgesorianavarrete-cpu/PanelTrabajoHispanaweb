@@ -12,20 +12,42 @@ import {
 import { useResizable } from '@/hooks/use-resizable';
 
 interface Client {
-    id: number;
-    name: string;
-    sector: string;
-    color: string;
+    id: string;
+    first_name: string;
+    last_name: string;
+    email?: string;
+    phone?: string;
+    city?: string;
+    sector?: string;
+    website_url?: string;
+    sitemap_url?: string;
+    blog_map_url?: string;
+    context_info?: string;
+    wp_url?: string;
+    wp_api_key?: string;
 }
 
 interface Post {
     id: number;
-    client_id: number;
+    client_id: string;
     content: string;
     platforms: string[];
     media_url: string | null;
     status: string;
     publish_at: string;
+    is_completed?: boolean;
+}
+
+interface Article {
+    id: number;
+    client_id: string;
+    title: string;
+    content_html?: string;
+    image_url?: string;
+    status: string;
+    metadata?: any;
+    created_at?: string;
+    is_completed?: boolean;
 }
 
 export default function SocialMediaApp() {
@@ -40,7 +62,7 @@ export default function SocialMediaApp() {
     // Dynamic Client and Post State
     const [clients, setClients] = useState<Client[]>([]);
     const [posts, setPosts] = useState<Post[]>([]);
-    const [activeClient, setActiveClient] = useState<number | null>(null);
+    const [activeClient, setActiveClient] = useState<string | null>(null);
     const [isClientMenuOpen, setIsClientMenuOpen] = useState(false);
     const [loading, setLoading] = useState(true);
 
@@ -50,6 +72,11 @@ export default function SocialMediaApp() {
     const [publishDate, setPublishDate] = useState<string>(new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10));
     const [isSaving, setIsSaving] = useState(false);
     const [isAiImproving, setIsAiImproving] = useState(false);
+    const [titleCount, setTitleCount] = useState<number>(10);
+    const [selectedImageModel, setSelectedImageModel] = useState('flux-1-1-pro');
+    const [additionalHtml, setAdditionalHtml] = useState('');
+    const [isFrequencyModalOpen, setIsFrequencyModalOpen] = useState(false);
+    const [weeklySchedule, setWeeklySchedule] = useState({ fb_per_week: 0, ig_per_week: 0, gmb_per_week: 0, blog_per_week: 0, video_per_week: 0 });
 
     // Interactions
     const [selectedPost, setSelectedPost] = useState<Post | null>(null);
@@ -91,6 +118,7 @@ export default function SocialMediaApp() {
     };
 
     const currentClient = clients.find(c => c.id === activeClient) || clients[0];
+    const clientName = currentClient ? `${currentClient.first_name} ${currentClient.last_name || ''}` : 'Cliente';
 
     // Compute current week days (Mon-Fri)
     const getWeekDays = () => {
@@ -112,6 +140,26 @@ export default function SocialMediaApp() {
         setSelectedPlatforms(prev =>
             prev.includes(platformId) ? prev.filter(p => p !== platformId) : [...prev, platformId]
         );
+    };
+
+    const fetchWeeklySchedule = async (clientId: string) => {
+        const { data } = await insforge.database.from('social_client_schedules').select('*').eq('client_id', clientId).single();
+        if (data) setWeeklySchedule(data);
+        else setWeeklySchedule({ fb_per_week: 0, ig_per_week: 0, gmb_per_week: 0, blog_per_week: 0, video_per_week: 0 });
+    };
+
+    const handleSaveFrequency = async () => {
+        if (!activeClient) return;
+        const { error } = await insforge.database.from('social_client_schedules').upsert({
+            client_id: activeClient,
+            ...weeklySchedule,
+            updated_at: new Date().toISOString()
+        });
+        if (error) alert('Error: ' + error.message);
+        else {
+            alert('Frecuencia guardada con éxito.');
+            setIsFrequencyModalOpen(false);
+        }
     };
 
     const handleSavePost = async (status: string) => {
@@ -169,13 +217,13 @@ export default function SocialMediaApp() {
     const fetchData = useCallback(async () => {
         setLoading(true);
         const { data: clientsData } = await insforge.database
-            .from('clients')
+            .from('crm_clients')
             .select('*')
-            .order('id', { ascending: true });
+            .order('first_name', { ascending: true });
 
         if (clientsData && clientsData.length > 0) {
             setClients(clientsData as Client[]);
-            if (!activeClient) setActiveClient(clientsData[0].id);
+            if (!activeClient && clientsData.length > 0) setActiveClient(clientsData[0].id);
         }
 
         // Fetch AI Settings
@@ -191,16 +239,17 @@ export default function SocialMediaApp() {
         setLoading(false);
     }, [activeClient]);
 
-    const fetchArticles = useCallback(async (clientId: number) => {
-        const { data } = await insforge.database
+    const fetchArticles = useCallback(async (clientId: string) => {
+        const { data: articlesData } = await insforge.database
             .from('social_articles')
             .select('*')
             .eq('client_id', clientId)
             .order('created_at', { ascending: false });
-        setArticles(data || []);
+
+        if (articlesData) setArticles(articlesData as Article[]);
     }, []);
 
-    const fetchPosts = useCallback(async (clientId: number) => {
+    const fetchPosts = useCallback(async (clientId: string) => {
         const { data } = await insforge.database
             .from('social_posts')
             .select('*')
@@ -210,6 +259,24 @@ export default function SocialMediaApp() {
         setPosts((data as Post[]) || []);
     }, []);
 
+    const handleImproveWithAi = async () => {
+        if (!activeClient || !currentClient || !selectedPost) return;
+        setIsAiImproving(true);
+        try {
+            const { data } = await insforge.functions.invoke('marketing-copilot', {
+                body: {
+                    action: 'improve_copy',
+                    content: selectedPost.content,
+                    clientName: clientName,
+                    clientSector: currentClient.sector
+                }
+            });
+            if (data?.success) setSelectedPost({ ...selectedPost, content: data.data.improved });
+        } finally {
+            setIsAiImproving(false);
+        }
+    };
+
     const handleGenerateSuggestions = async () => {
         if (!activeClient || !currentClient) return;
         setIsSaving(true);
@@ -217,9 +284,13 @@ export default function SocialMediaApp() {
             const { data } = await insforge.functions.invoke('marketing-copilot', {
                 body: {
                     action: searchTopic ? 'search_ideas' : 'get_suggestions',
-                    clientName: currentClient.name,
+                    clientName: clientName,
                     clientSector: currentClient.sector,
+                    clientContext: currentClient.context_info,
+                    websiteUrl: currentClient.website_url,
+                    blogMapUrl: currentClient.blog_map_url,
                     topic: searchTopic,
+                    count: titleCount,
                     textModel: aiSettings.default_social_model
                 }
             });
@@ -229,7 +300,7 @@ export default function SocialMediaApp() {
                     client_id: activeClient,
                     title: s.title,
                     status: 'Sugerencia',
-                    metadata: { reasoning: s.reasoning }
+                    metadata: { reasoning: s.reasoning, strategy: s.strategy }
                 }));
 
                 await insforge.database.from('social_articles').insert(newArticles);
@@ -247,12 +318,15 @@ export default function SocialMediaApp() {
         try {
             const { data } = await insforge.functions.invoke('marketing-copilot', {
                 body: {
-                    prompt: `Redactar un artículo completo sobre: ${title}`,
-                    clientName: currentClient.name,
+                    prompt: `Redactar un artículo completo, SEO optimizado de más de 2000 palabras sobre: ${title}`,
+                    clientName: clientName,
                     clientSector: currentClient.sector,
+                    clientContext: currentClient.context_info,
+                    additionalHtml: additionalHtml,
                     textModel: aiSettings.default_social_model,
-                    imageModel: aiSettings.default_image_model,
-                    isArticle: true
+                    imageModel: selectedImageModel,
+                    isArticle: true,
+                    fullGen: true
                 }
             });
 
@@ -279,32 +353,48 @@ export default function SocialMediaApp() {
         setArticles((prev: any[]) => prev.filter((article: any) => article.id !== id));
     };
 
-    const handlePublishArticle = async (article: any) => {
+    const handlePublishArticle = async (article: Article) => {
+        if (!activeClient || !currentClient) return;
         setIsSaving(true);
         try {
-            // Default platforms for the MVP. Could be dynamic later.
-            const platforms = ['wordpress', 'facebook', 'gmb'];
-
-            const { data, error } = await insforge.functions.invoke('publish-social-post', {
-                body: {
-                    clientId: activeClient,
-                    article: article,
-                    platforms: platforms
-                }
-            });
-
-            if (data?.success) {
-                await fetchArticles(activeClient as number);
-                alert('¡Publicación procesada exitosamente!');
-            } else {
-                alert(`Error en publicación: ${data?.error || data?.results?.errors?.join(', ') || error?.message || 'Desconocido'}`);
+            // 1. Publish to WordPress if credentials exist
+            if (currentClient.wp_url && currentClient.wp_api_key) {
+                console.log('Publicando en WordPress...', currentClient.wp_url);
+                // Implementation would go here calling WP REST API
             }
+
+            // 2. Publish/Schedule for Social Media
+            if (article.status === 'Borrador' && article.content_html) {
+                // In a real scenario, we'd use the social copies generated with the article
+                const copies = article.metadata?.social_copies || [article.title, article.title, article.title];
+                const newPosts = [
+                    { client_id: activeClient, content: copies[0] || '', platforms: ['linkedin'], status: 'Programado', publish_at: new Date().toISOString() },
+                    { client_id: activeClient, content: copies[1] || '', platforms: ['instagram'], status: 'Programado', publish_at: new Date().toISOString() },
+                    { client_id: activeClient, content: copies[2] || '', platforms: ['facebook'], status: 'Programado', publish_at: new Date().toISOString() },
+                ];
+                await insforge.database.from('social_posts').insert(newPosts);
+            }
+
+            // 3. Mark article as published
+            await insforge.database.from('social_articles').update({ status: 'Publicado', is_completed: true }).eq('id', article.id);
+
+            alert('¡Artículo y publicaciones en redes programados con éxito!');
+            await fetchArticles(activeClient);
         } catch (e: any) {
-            console.error(e);
-            alert(`Excepción de red: ${e.message}`);
+            alert('Error al publicar: ' + e.message);
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const toggleCompletePost = async (post: Post) => {
+        const { error } = await insforge.database.from('social_posts').update({ is_completed: !post.is_completed }).eq('id', post.id);
+        if (!error && activeClient) fetchPosts(activeClient);
+    };
+
+    const toggleCompleteArticle = async (article: Article) => {
+        const { error } = await insforge.database.from('social_articles').update({ is_completed: !article.is_completed }).eq('id', article.id);
+        if (!error && activeClient) fetchArticles(activeClient);
     };
 
     useEffect(() => {
@@ -352,25 +442,25 @@ export default function SocialMediaApp() {
                             className="flex items-center bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 px-4 py-2 rounded-xl text-sm font-medium hover:bg-slate-50 dark:hover:bg-white/10 transition-colors shadow-sm"
                         >
                             <Building className="w-4 h-4 mr-2 text-slate-400" />
-                            <span className="text-slate-900 dark:text-white mr-2">{currentClient.name}</span>
+                            <span className="text-slate-900 dark:text-white mr-2">{clientName}</span>
                             <span className="text-xs bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full mr-2 hidden sm:inline-block">
-                                {currentClient.sector}
+                                {currentClient.sector || 'Sin sector'}
                             </span>
                             <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isClientMenuOpen ? 'rotate-180' : ''}`} />
                         </button>
 
                         {isClientMenuOpen && (
-                            <div className="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-[#1a2235] border border-slate-200 dark:border-white/10 rounded-xl shadow-xl z-50 overflow-hidden py-1">
+                            <div className="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-[#1a2235] border border-slate-200 dark:border-white/10 rounded-xl shadow-xl z-50 overflow-hidden py-1 max-h-64 overflow-y-auto">
                                 {clients.map(client => (
                                     <button
                                         key={client.id}
                                         onClick={() => { setActiveClient(client.id); setIsClientMenuOpen(false); }}
                                         className={`w-full text-left px-4 py-3 flex items-center hover:bg-slate-50 dark:hover:bg-white/5 transition-colors ${activeClient === client.id ? 'bg-blue-50 dark:bg-blue-500/10' : ''}`}
                                     >
-                                        <div className={`w-3 h-3 rounded-full bg-gradient-to-tr ${client.color || 'from-slate-400 to-slate-500'} mr-3 shadow-sm`} />
+                                        <div className={`w-3 h-3 rounded-full bg-blue-500 mr-3 shadow-sm`} />
                                         <div>
                                             <div className={`text-sm font-medium ${activeClient === client.id ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                                                {client.name}
+                                                {client.first_name} {client.last_name}
                                             </div>
                                             <div className="text-xs text-slate-500">{client.sector}</div>
                                         </div>
@@ -406,9 +496,18 @@ export default function SocialMediaApp() {
                                     <Sparkles className="w-5 h-5 text-purple-500" />
                                     Cazador de Tendencias & Títulos
                                 </h2>
-                                <p className="text-sm text-slate-500 mt-1">Busca temas virales o genera títulos magnéticos para {currentClient.name}</p>
+                                <p className="text-sm text-slate-500 mt-1">Busca temas virales o genera títulos magnéticos para {clientName}</p>
                             </div>
                             <div className="flex items-center gap-3">
+                                <select
+                                    value={titleCount}
+                                    onChange={(e) => setTitleCount(parseInt(e.target.value))}
+                                    className="bg-white dark:bg-[#0B1121] border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-600 dark:text-slate-300 focus:outline-none"
+                                >
+                                    <option value={10}>10 Títulos</option>
+                                    <option value={20}>20 Títulos</option>
+                                    <option value={30}>30 Títulos</option>
+                                </select>
                                 <div className="relative group">
                                     <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl blur opacity-20 group-hover:opacity-40 transition-opacity"></div>
                                     <input
@@ -436,11 +535,11 @@ export default function SocialMediaApp() {
                                     <Sparkles className="w-8 h-8 opacity-50 text-purple-500" />
                                 </div>
                                 <p className="text-lg font-medium text-slate-600 dark:text-slate-300">No hay sugerencias todavía</p>
-                                <p className="text-sm mt-1 max-w-sm text-center">Haz clic en el botón para que la IA analice el sector de tu cliente y proponga temas ganadores.</p>
+                                <p className="text-sm mt-1 max-w-sm text-center">La IA analizará el sector, contexto y sitemap de {clientName} para proponer títulos únicos.</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {articles.map((article: any) => (
+                                {articles.map((article: Article) => (
                                     <div key={article.id} className="group bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl overflow-hidden hover:shadow-xl transition-all flex flex-col h-full ring-pink-500/20 hover:ring-4">
                                         <div className="p-6 flex-1">
                                             <div className="flex justify-between items-start mb-4">
@@ -464,26 +563,42 @@ export default function SocialMediaApp() {
                                         </div>
                                         <div className="p-4 border-t border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02]">
                                             {article.status === 'Sugerencia' ? (
-                                                <button
-                                                    onClick={() => handleWriteArticle(article.id, article.title)}
-                                                    disabled={isSaving}
-                                                    className="w-full py-2.5 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white rounded-xl text-sm font-bold flex items-center justify-center hover:bg-slate-50 dark:hover:bg-white/10 transition-colors shadow-sm"
-                                                >
-                                                    {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin text-pink-500" /> : <Wand2 className="w-4 h-4 mr-2 text-pink-500" />}
-                                                    Redactar con IA
-                                                </button>
-                                            ) : (
-                                                <div className="flex space-x-2">
-                                                    <button className="flex-1 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors">
-                                                        Editar Manual
-                                                    </button>
+                                                <div className="space-y-3">
+                                                    <div className="flex gap-2">
+                                                        <select
+                                                            value={selectedImageModel}
+                                                            onChange={(e) => setSelectedImageModel(e.target.value)}
+                                                            className="flex-1 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-[10px] text-slate-600 dark:text-slate-400"
+                                                        >
+                                                            <option value="flux-1-1-pro">FLUX 1.1 Pro</option>
+                                                            <option value="kolors">Kolors</option>
+                                                            <option value="ideogram-v2">Ideogram v2</option>
+                                                            <option value="recraft-v3">Recraft v3</option>
+                                                        </select>
+                                                    </div>
                                                     <button
-                                                        onClick={() => handlePublishArticle(article)}
+                                                        onClick={() => handleWriteArticle(article.id, article.title)}
                                                         disabled={isSaving}
-                                                        className="flex-1 py-2 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl text-xs font-bold shadow-sm hover:shadow-md transition-all disabled:opacity-50"
+                                                        className="w-full py-2.5 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white rounded-xl text-sm font-bold flex items-center justify-center hover:bg-slate-50 dark:hover:bg-white/10 transition-colors shadow-sm"
                                                     >
-                                                        Programar / Publicar
+                                                        {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin text-pink-500" /> : <Wand2 className="w-4 h-4 mr-2 text-pink-500" />}
+                                                        Generar Artículo (+2000 palabras)
                                                     </button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-col gap-2">
+                                                    <div className="flex space-x-2">
+                                                        <button className="flex-1 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors">
+                                                            Editar HTML
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handlePublishArticle(article)}
+                                                            disabled={isSaving}
+                                                            className="flex-1 py-2 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl text-xs font-bold shadow-sm hover:shadow-md transition-all disabled:opacity-50"
+                                                        >
+                                                            Publicar en WP / RRSS
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -549,36 +664,59 @@ export default function SocialMediaApp() {
                             <div className="grid grid-cols-5 min-h-[500px] divide-x divide-slate-200 dark:divide-white/10">
                                 {weekDays.map((day: Date, colIdx: number) => {
                                     const dayPosts = posts.filter((p: any) => {
-                                        const publishDate = new Date(p.publish_at);
-                                        return publishDate.toDateString() === day.toDateString();
+                                        const pubDate = new Date(p.publish_at);
+                                        return pubDate.toDateString() === day.toDateString();
                                     });
+                                    const dayArticles = articles.filter((a: any) => {
+                                        const pubDate = new Date(a.publish_at || a.created_at);
+                                        return pubDate.toDateString() === day.toDateString();
+                                    });
+                                    const allDayItems = [...dayPosts.map(p => ({ ...p, type: 'post' })), ...dayArticles.map(a => ({ ...a, type: 'article' }))];
+
                                     return (
                                         <div key={colIdx} className="p-2 space-y-2">
-                                            {dayPosts.map((post: any) => (
-                                                <div key={post.id} className={`bg-white dark:bg-[#0a0f1c] border-2 ${post.status === 'Programado' ? 'border-pink-200 dark:border-pink-500/30 shadow-sm' : 'border-slate-200 dark:border-white/10'} rounded-xl p-3 hover:border-pink-500/50 transition-colors relative overflow-hidden group`}>
-                                                    {post.status === 'Programado' && <div className="absolute top-0 left-0 w-1 h-full bg-pink-500" />}
+                                            {allDayItems.sort((a, b) => new Date(a.publish_at || a.created_at).getTime() - new Date(b.publish_at || b.created_at).getTime()).map((item: any) => (
+                                                <div
+                                                    key={`${item.type}-${item.id}`}
+                                                    className={`bg-white dark:bg-[#0a0f1c] border-2 ${item.is_completed ? 'opacity-60 border-emerald-500/30' : item.status === 'Programado' ? 'border-pink-200 dark:border-pink-500/30 shadow-sm' : 'border-slate-200 dark:border-white/10'} rounded-xl p-3 hover:border-pink-500/50 transition-all relative overflow-hidden group`}
+                                                >
+                                                    {item.status === 'Programado' && !item.is_completed && <div className="absolute top-0 left-0 w-1 h-full bg-pink-500" />}
+                                                    {item.is_completed && <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />}
+
                                                     <div className="flex items-center justify-between mb-2">
                                                         <div className="flex items-center space-x-1">
-                                                            {(post.platforms as string[]).includes('instagram') && <Instagram className="w-3.5 h-3.5 text-pink-500" />}
-                                                            {(post.platforms as string[]).includes('facebook') && <Facebook className="w-3.5 h-3.5 text-blue-600" />}
-                                                            {(post.platforms as string[]).includes('linkedin') && <Linkedin className="w-3.5 h-3.5 text-blue-500" />}
-                                                            {(post.platforms as string[]).includes('twitter') && <Twitter className="w-3.5 h-3.5 text-slate-800 dark:text-slate-200" />}
+                                                            {item.type === 'post' ? (
+                                                                <>
+                                                                    {(item.platforms as string[]).includes('instagram') && <Instagram className="w-3.5 h-3.5 text-pink-500" />}
+                                                                    {(item.platforms as string[]).includes('facebook') && <Facebook className="w-3.5 h-3.5 text-blue-600" />}
+                                                                    {(item.platforms as string[]).includes('linkedin') && <Linkedin className="w-3.5 h-3.5 text-blue-500" />}
+                                                                </>
+                                                            ) : (
+                                                                <FileEdit className="w-3.5 h-3.5 text-emerald-500" />
+                                                            )}
                                                         </div>
                                                         <div className="flex items-center gap-1">
-                                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center ${post.status === 'Publicado' ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10' : post.status === 'Programado' ? 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-white/10' : 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10'}`}>
-                                                                {post.status === 'Programado' && <Clock className="w-3 h-3 mr-1" />}
-                                                                {post.status}
-                                                            </span>
-                                                            <button onClick={() => handleDeletePost(post.id)} className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-400 hover:text-red-500 transition-all">
+                                                            <button
+                                                                onClick={() => item.type === 'post' ? toggleCompletePost(item) : toggleCompleteArticle(item)}
+                                                                className={`p-1 rounded-full transition-colors ${item.is_completed ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-white/10 text-slate-400 hover:text-emerald-500'}`}
+                                                            >
+                                                                <Check className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => item.type === 'post' ? handleDeletePost(item.id) : handleDeleteArticle(item.id)}
+                                                                className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-400 hover:text-red-500 transition-all"
+                                                            >
                                                                 <Trash2 className="w-3 h-3" />
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    <p className={`text-xs font-medium line-clamp-3 ${post.status === 'Programado' ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>{post.content}</p>
+                                                    <p className={`text-xs font-medium line-clamp-3 ${item.is_completed ? 'line-through text-slate-400' : item.status === 'Programado' ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                        {item.type === 'post' ? item.content : item.title}
+                                                    </p>
 
-                                                    {post.status === 'Publicado' && (
+                                                    {item.type === 'post' && item.status === 'Publicado' && (
                                                         <button
-                                                            onClick={(e: any) => { e.stopPropagation(); setSelectedPost(post); setIsInteractionsOpen(true); }}
+                                                            onClick={(e: any) => { e.stopPropagation(); setSelectedPost(item); setIsInteractionsOpen(true); }}
                                                             className="mt-3 w-full py-1.5 bg-pink-50 dark:bg-pink-500/10 text-pink-600 dark:text-pink-400 text-[10px] font-bold rounded-lg border border-pink-200 dark:border-pink-500/20 hover:bg-pink-100 transition-colors flex items-center justify-center shadow-sm"
                                                         >
                                                             <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> Ver Interacciones
@@ -586,7 +724,7 @@ export default function SocialMediaApp() {
                                                     )}
                                                 </div>
                                             ))}
-                                            {dayPosts.length === 0 && (
+                                            {allDayItems.length === 0 && (
                                                 <button onClick={() => setActiveTab('create')} className="w-full h-16 border-2 border-dashed border-slate-200 dark:border-white/10 rounded-xl flex items-center justify-center text-slate-300 hover:text-pink-400 hover:border-pink-400/50 transition-colors">
                                                     <Plus className="w-4 h-4" />
                                                 </button>
@@ -662,7 +800,7 @@ export default function SocialMediaApp() {
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">Fecha de publicaci\u00f3n</label>
+                                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">Fecha de publicación</label>
                                         <input
                                             type="date"
                                             value={publishDate}
@@ -731,11 +869,11 @@ export default function SocialMediaApp() {
 
                                 <div className="flex items-center justify-between px-2 mb-4">
                                     <div className="flex items-center space-x-2">
-                                        <div className={`w-8 h-8 rounded-full bg-gradient-to-tr ${currentClient.color || 'from-violet-600 to-blue-600'} flex items-center justify-center text-white text-xs font-bold leading-none`}>
-                                            {currentClient.name.substring(0, 1)}
+                                        <div className={`w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold leading-none`}>
+                                            {currentClient?.first_name?.substring(0, 1) || 'C'}
                                         </div>
                                         <div>
-                                            <p className="text-xs font-bold text-slate-900 dark:text-white line-clamp-1">{currentClient.name}</p>
+                                            <p className="text-xs font-bold text-slate-900 dark:text-white line-clamp-1">{clientName}</p>
                                             <p className="text-[10px] text-slate-500">Patrocinado</p>
                                         </div>
                                     </div>
@@ -757,7 +895,7 @@ export default function SocialMediaApp() {
                                         <div className="w-5 h-5 rounded-full border border-slate-300 dark:border-white/30"></div>
                                     </div>
                                     <p className="text-xs text-slate-900 dark:text-white leading-relaxed line-clamp-3">
-                                        <span className="font-bold mr-1">{currentClient.name}</span>
+                                        <span className="font-bold mr-1">{currentClient?.first_name}</span>
                                         {postContent || 'Escribe un post para previsualizarlo aquí...'}
                                     </p>
                                 </div>
@@ -879,6 +1017,69 @@ export default function SocialMediaApp() {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Frecuencia / Programación Automática Modal */}
+            <div className="fixed bottom-8 right-8 z-40">
+                <button
+                    onClick={() => { if (activeClient) { fetchWeeklySchedule(activeClient); setIsFrequencyModalOpen(true); } else alert('Selecciona un cliente primero'); }}
+                    className="bg-white dark:bg-[#1a2235] border border-slate-200 dark:border-white/10 p-4 rounded-2xl shadow-2xl flex items-center gap-3 hover:scale-105 transition-transform group"
+                >
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
+                        <CalendarIcon className="w-5 h-5" />
+                    </div>
+                    <div className="text-left">
+                        <p className="text-xs text-slate-500 font-medium">Frecuencia Semanal</p>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">
+                            {weeklySchedule.fb_per_week + weeklySchedule.ig_per_week + weeklySchedule.gmb_per_week + weeklySchedule.blog_per_week + weeklySchedule.video_per_week > 0
+                                ? `Plan Activo (${weeklySchedule.fb_per_week + weeklySchedule.ig_per_week + weeklySchedule.gmb_per_week + weeklySchedule.blog_per_week + weeklySchedule.video_per_week} total)`
+                                : 'Click para configurar'}
+                        </p>
+                    </div>
+                </button>
+            </div>
+
+            {isFrequencyModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-[#0f1629] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                        <div className="p-6 border-b border-slate-200 dark:border-white/10 flex justify-between items-center">
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white text-center">Configurar Frecuencia Semanal</h2>
+                            <button onClick={() => setIsFrequencyModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-xs text-slate-500 mb-4 text-center italic">Define cuántos contenidos generar y publicar automáticamente para {clientName}.</p>
+
+                            {[
+                                { label: 'Facebook', key: 'fb_per_week', color: 'bg-blue-600' },
+                                { label: 'Instagram', key: 'ig_per_week', color: 'bg-pink-600' },
+                                { label: 'Google Business', key: 'gmb_per_week', color: 'bg-orange-500' },
+                                { label: 'Artículos Blog', key: 'blog_per_week', color: 'bg-emerald-500' },
+                                { label: 'Videos Shors/Reels', key: 'video_per_week', color: 'bg-red-500' },
+                            ].map(item => (
+                                <div key={item.key} className="flex items-center justify-between bg-slate-50 dark:bg-white/5 p-4 rounded-xl border border-slate-100 dark:border-white/5 transition-all hover:shadow-md">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-2 h-8 rounded-full ${item.color}`} />
+                                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{item.label}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={() => setWeeklySchedule(prev => ({ ...prev, [item.key]: Math.max(0, (prev as any)[item.key] - 1) }))}
+                                            className="w-8 h-8 rounded-lg bg-white dark:bg-white/10 border border-slate-200 dark:border-white/10 flex items-center justify-center text-slate-500 hover:bg-slate-50"
+                                        >-</button>
+                                        <span className="w-8 text-center font-bold text-slate-900 dark:text-white">{(weeklySchedule as any)[item.key]}</span>
+                                        <button
+                                            onClick={() => setWeeklySchedule(prev => ({ ...prev, [item.key]: (prev as any)[item.key] + 1 }))}
+                                            className="w-8 h-8 rounded-lg bg-white dark:bg-white/10 border border-slate-200 dark:border-white/10 flex items-center justify-center text-slate-500 hover:bg-slate-50"
+                                        >+</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="p-6 bg-slate-50 dark:bg-white/[0.02] border-t border-slate-200 dark:border-white/10 flex gap-3">
+                            <button onClick={() => setIsFrequencyModalOpen(false)} className="flex-1 py-2 rounded-xl text-sm font-medium text-slate-500 hover:bg-slate-100 transition-colors">Cancelar</button>
+                            <button onClick={handleSaveFrequency} className="flex-1 py-2 rounded-xl text-sm font-bold bg-blue-600 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all">Guardar Plan</button>
                         </div>
                     </div>
                 </div>

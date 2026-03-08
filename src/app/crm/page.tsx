@@ -11,7 +11,22 @@ import { es } from 'date-fns/locale';
 
 type TabType = 'dashboard' | 'clients' | 'tasks' | 'appointments' | 'activities';
 
-interface Client { id: string; first_name: string; last_name: string; email: string; phone: string; type: string; city: string; }
+interface Client {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string;
+    type: string;
+    city: string;
+    sector?: string;
+    website_url?: string;
+    sitemap_url?: string;
+    blog_map_url?: string;
+    context_info?: string;
+    wp_url?: string;
+    wp_api_key?: string;
+}
 interface Task { id: string; title: string; priority: string; status: string; due_date: string; client?: { first_name: string; last_name: string } }
 interface Appointment { id: string; title: string; location: string; start_time: string; end_time: string; status: string; }
 interface Activity { id: string; type: string; title: string; description: string; activity_date: string; outcome: string; client?: { first_name: string; last_name: string } }
@@ -26,6 +41,11 @@ export default function CRMApp() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [activities, setActivities] = useState<Activity[]>([]);
+
+    // Modal state
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingClient, setEditingClient] = useState<Partial<Client> | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -108,6 +128,47 @@ export default function CRMApp() {
         { id: 'activities', label: 'Actividades', icon: ActivityIcon },
     ];
 
+    const handleOpenModal = (client?: Client) => {
+        setEditingClient(client || { first_name: '', last_name: '', email: '', phone: '', type: 'LEAD', city: '', sector: '', website_url: '', sitemap_url: '', blog_map_url: '', context_info: '', wp_url: '', wp_api_key: '' });
+        setIsModalOpen(true);
+    };
+
+    const handleSaveClient = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingClient) return;
+        setIsSaving(true);
+        try {
+            const clientData = {
+                ...editingClient,
+                organization_id: '00000000-0000-0000-0000-000000000000', // Default for now
+                user_id: '00000000-0000-0000-0000-000000000000', // Default for now
+            };
+
+            const { error: dbError } = editingClient.id
+                ? await insforge.database.from('crm_clients').update(clientData).eq('id', editingClient.id)
+                : await insforge.database.from('crm_clients').insert([clientData]);
+
+            if (dbError) throw dbError;
+            setIsModalOpen(false);
+            loadData();
+        } catch (e: any) {
+            alert('Error al guardar: ' + e.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDeleteClient = async (id: string) => {
+        if (!confirm('¿Estás seguro de que quieres eliminar este cliente?')) return;
+        try {
+            const { error: dbError } = await insforge.database.from('crm_clients').delete().eq('id', id);
+            if (dbError) throw dbError;
+            loadData();
+        } catch (e: any) {
+            alert('Error al eliminar: ' + e.message);
+        }
+    };
+
     const getPriorityColor = (p: string) => {
         switch (p) {
             case 'URGENT': return 'bg-red-500/10 text-red-500';
@@ -141,7 +202,7 @@ export default function CRMApp() {
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        {activeTab === 'clients' && <button onClick={() => null} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"><Plus className="w-4 h-4" /> Nuevo Cliente</button>}
+                        {activeTab === 'clients' && <button onClick={() => handleOpenModal()} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"><Plus className="w-4 h-4" /> Nuevo Cliente</button>}
                         {activeTab === 'tasks' && <button onClick={() => null} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"><Plus className="w-4 h-4" /> Nueva Tarea</button>}
                         {activeTab === 'appointments' && <button onClick={() => null} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"><Plus className="w-4 h-4" /> Nueva Cita</button>}
                         {activeTab === 'activities' && <button onClick={() => null} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"><Plus className="w-4 h-4" /> Nueva Actividad</button>}
@@ -246,13 +307,14 @@ export default function CRMApp() {
                                     </thead>
                                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                                         {clients.map(client => (
-                                            <tr key={client.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/20 cursor-pointer">
+                                            <tr key={client.id} onClick={() => handleOpenModal(client)} className="hover:bg-slate-50 dark:hover:bg-slate-800/20 cursor-pointer group">
                                                 <td className="p-4 flex items-center gap-3">
                                                     <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
                                                         {client.first_name?.[0] || 'U'}
                                                     </div>
                                                     <div>
                                                         <p className="font-medium text-slate-800 dark:text-white">{client.first_name} {client.last_name}</p>
+                                                        {client.sector && <p className="text-[10px] text-slate-500">{client.sector}</p>}
                                                     </div>
                                                 </td>
                                                 <td className="p-4">
@@ -262,11 +324,21 @@ export default function CRMApp() {
                                                 </td>
                                                 <td className="p-4">
                                                     <div className="flex flex-col gap-1 text-slate-500 dark:text-slate-400">
-                                                        <div className="flex items-center gap-2"><Mail className="w-3 h-3" /> {client.email || '-'}</div>
-                                                        <div className="flex items-center gap-2"><Phone className="w-3 h-3" /> {client.phone || '-'}</div>
+                                                        <div className="flex items-center gap-2 text-xs"><Mail className="w-3 h-3" /> {client.email || '-'}</div>
+                                                        <div className="flex items-center gap-2 text-xs"><Phone className="w-3 h-3" /> {client.phone || '-'}</div>
                                                     </div>
                                                 </td>
-                                                <td className="p-4 text-slate-500 dark:text-slate-400">{client.city || '-'}</td>
+                                                <td className="p-4 relative">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-slate-500 dark:text-slate-400">{client.city || '-'}</span>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteClient(client.id); }}
+                                                            className="p-2 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                </td>
                                             </tr>
                                         ))}
                                         {clients.length === 0 && (
@@ -396,6 +468,115 @@ export default function CRMApp() {
                     </div>
                 )}
             </main>
+
+            {/* Client Modal */}
+            {isModalOpen && editingClient && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-[#0f1629] rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                        <div className="p-6 border-b border-slate-200 dark:border-white/10 flex justify-between items-center bg-slate-50 dark:bg-white/[0.02]">
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                                {editingClient.id ? 'Editar Cliente' : 'Nuevo Cliente'}
+                            </h2>
+                            <button onClick={() => setIsModalOpen(false)} className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-all">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSaveClient} className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-thin">
+                            {/* General Info */}
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                    <User className="w-3 h-3" /> Información General
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-1">Nombre</label>
+                                        <input required type="text" value={editingClient.first_name} onChange={e => setEditingClient({ ...editingClient, first_name: e.target.value })} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 focus:outline-none" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-1">Apellidos</label>
+                                        <input required type="text" value={editingClient.last_name} onChange={e => setEditingClient({ ...editingClient, last_name: e.target.value })} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 focus:outline-none" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-1">Email</label>
+                                        <input type="email" value={editingClient.email} onChange={e => setEditingClient({ ...editingClient, email: e.target.value })} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 focus:outline-none" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-1">Teléfono</label>
+                                        <input type="text" value={editingClient.phone} onChange={e => setEditingClient({ ...editingClient, phone: e.target.value })} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 focus:outline-none" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-1">Tipo</label>
+                                        <select value={editingClient.type} onChange={e => setEditingClient({ ...editingClient, type: e.target.value })} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 focus:outline-none">
+                                            <option value="LEAD">Lead</option>
+                                            <option value="CUSTOMER">Cliente</option>
+                                            <option value="POTENTIAL">Potencial</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-1">Sector</label>
+                                        <input type="text" value={editingClient.sector} onChange={e => setEditingClient({ ...editingClient, sector: e.target.value })} placeholder="Ej: Inmobiliaria, Restauración..." className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 focus:outline-none" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Marketing Context (AI Context) */}
+                            <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-white/5">
+                                <h3 className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                                    <ActivityIcon className="w-3 h-3" /> Contexto para Marketing e IA
+                                </h3>
+                                <div className="space-y-4">
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-1">Contexto de Empresa (Misión, valores, qué hacen...)</label>
+                                        <textarea value={editingClient.context_info} onChange={e => setEditingClient({ ...editingClient, context_info: e.target.value })} rows={3} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl p-4 text-sm focus:ring-2 focus:ring-purple-500/50 focus:outline-none resize-none" placeholder="Proporciona contexto para que la IA genere mejores artículos..." />
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-xs text-slate-500 ml-1">URL Web</label>
+                                            <input type="url" value={editingClient.website_url} onChange={e => setEditingClient({ ...editingClient, website_url: e.target.value })} placeholder="https://..." className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-purple-500/50 focus:outline-none" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs text-slate-500 ml-1">URL Sitemap</label>
+                                            <input type="url" value={editingClient.sitemap_url} onChange={e => setEditingClient({ ...editingClient, sitemap_url: e.target.value })} placeholder="Para evitar duplicados" className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-purple-500/50 focus:outline-none" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs text-slate-500 ml-1">URL Blog (RSS/Map)</label>
+                                            <input type="url" value={editingClient.blog_map_url} onChange={e => setEditingClient({ ...editingClient, blog_map_url: e.target.value })} placeholder="Historial de posts" className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-purple-500/50 focus:outline-none" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Integration */}
+                            <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-white/5">
+                                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                                    <Briefcase className="w-3 h-3" /> Integración WP
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-1">WordPress URL</label>
+                                        <input type="url" value={editingClient.wp_url} onChange={e => setEditingClient({ ...editingClient, wp_url: e.target.value })} placeholder="https://dominio.com" className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 focus:outline-none" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500 ml-1">Application Password / API Key</label>
+                                        <input type="password" value={editingClient.wp_api_key} onChange={e => setEditingClient({ ...editingClient, wp_api_key: e.target.value })} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 focus:outline-none" />
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+
+                        <div className="p-6 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02] flex justify-end gap-3">
+                            <button onClick={() => setIsModalOpen(false)} className="px-6 py-2 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
+                                Cancelar
+                            </button>
+                            <button onClick={(e) => handleSaveClient(e as any)} disabled={isSaving} className="px-8 py-2.5 rounded-xl text-sm font-bold bg-blue-600 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all disabled:opacity-50 flex items-center gap-2">
+                                {isSaving && <Clock className="w-4 h-4 animate-spin" />}
+                                {editingClient.id ? 'Actualizar Cliente' : 'Guardar Cliente'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
