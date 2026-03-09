@@ -283,6 +283,9 @@ export default function PleskServersApp() {
             setNewNodeForm({ name: '', ip: '', location: '', api_url: '', api_key: '', root_username: 'root', root_password: '', plesk_username: 'admin', plesk_password: '' });
             setConnectionStatus('idle');
             await fetchServers();
+        } else {
+            console.error('Insert error', error);
+            alert('Error al guardar: ' + error.message);
         }
         setIsSavingNode(false);
     };
