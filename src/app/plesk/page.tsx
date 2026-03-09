@@ -212,6 +212,8 @@ export default function PleskServersApp() {
     const [isSavingNode, setIsSavingNode] = useState(false);
     const [isTestingConnection, setIsTestingConnection] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error' | 'testingEdit' | 'successEdit' | 'errorEdit'>('idle');
+    const [isGeneratingKey, setIsGeneratingKey] = useState<'idle' | 'add' | 'edit'>('idle');
+    const [generateKeyError, setGenerateKeyError] = useState('');
     const [showRootPw, setShowRootPw] = useState(false);
     const [showPleskPw, setShowPleskPw] = useState(false);
     const [showEditNodeModal, setShowEditNodeModal] = useState(false);
@@ -266,6 +268,46 @@ export default function PleskServersApp() {
             setConnectionStatus(source === 'add' ? 'error' : 'errorEdit');
         }
         setIsTestingConnection(false);
+    };
+
+    const handleGenerateKey = async (source: 'add' | 'edit') => {
+        const form = source === 'add' ? newNodeForm : editNodeForm;
+        if (!form.ip || !form.root_username || !form.root_password) {
+            setGenerateKeyError('Para generar la API Key, primero debes rellenar la IP, Usuario Root y Contraseña Root.');
+            setTimeout(() => setGenerateKeyError(''), 5000);
+            return;
+        }
+
+        setIsGeneratingKey(source);
+        setGenerateKeyError('');
+
+        try {
+            const res = await fetch('/api/plesk/generate-key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ip: form.ip,
+                    username: form.root_username,
+                    password: form.root_password
+                })
+            });
+            const result = await res.json();
+
+            if (result.success && result.key) {
+                if (source === 'add') {
+                    setNewNodeForm(prev => ({ ...prev, api_key: result.key }));
+                } else {
+                    setEditNodeForm(prev => ({ ...prev, api_key: result.key }));
+                }
+            } else {
+                setGenerateKeyError(result.error || 'Error desconocido generando clave.');
+            }
+        } catch (e: any) {
+            setGenerateKeyError('Fallo en la conexión: ' + e.message);
+        } finally {
+            setIsGeneratingKey('idle');
+            setTimeout(() => setGenerateKeyError(''), 8000);
+        }
     };
 
     const handleAddNode = async () => {
@@ -898,7 +940,7 @@ Sé conciso y técnico.`;
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Plesk API Key (Secret Key)</label>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-2 mb-2">
                                         <input type="password" placeholder="Clave generada en Plesk" value={newNodeForm.api_key} onChange={e => setNewNodeForm(prev => ({ ...prev, api_key: e.target.value }))} className="flex-1 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
                                         <button
                                             onClick={() => handleTestConnection(newNodeForm.api_url, newNodeForm.api_key, 'add')}
@@ -908,6 +950,14 @@ Sé conciso y técnico.`;
                                             Probar Conexión
                                         </button>
                                     </div>
+                                    <button
+                                        onClick={() => handleGenerateKey('add')}
+                                        disabled={isGeneratingKey !== 'idle' || !newNodeForm.ip || !newNodeForm.root_password}
+                                        className="w-full px-4 py-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-400 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50 flex items-center justify-center">
+                                        {isGeneratingKey === 'add' ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShieldCheck className="w-4 h-4 mr-2" />}
+                                        {isGeneratingKey === 'add' ? 'Conectando por SSH y generando...' : 'Generar y Auto-Rellenar API Key vía SSH'}
+                                    </button>
+                                    {generateKeyError && <p className="text-rose-500 text-xs mt-2 flex items-center"><AlertTriangle className="w-3.5 h-3.5 mr-1" /> {generateKeyError}</p>}
                                     {connectionStatus === 'success' && <p className="text-emerald-500 text-xs mt-2 flex items-center"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Conexión exitosa a Plesk.</p>}
                                     {connectionStatus === 'error' && <p className="text-rose-500 text-xs mt-2 flex items-center"><AlertTriangle className="w-3.5 h-3.5 mr-1" /> Fallo de conexión o credenciales inválidas.</p>}
                                 </div>
@@ -1003,7 +1053,7 @@ Sé conciso y técnico.`;
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Plesk API Key (Opcional si no se cambia)</label>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-2 mb-2">
                                         <input type="password" placeholder="Dejar en blanco para mantener la actual" value={editNodeForm.api_key} onChange={e => setEditNodeForm(prev => ({ ...prev, api_key: e.target.value }))} className="flex-1 w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
                                         <button
                                             onClick={() => handleTestConnection(editNodeForm.api_url, editNodeForm.api_key, 'edit')}
@@ -1013,6 +1063,14 @@ Sé conciso y técnico.`;
                                             Probar Conexión
                                         </button>
                                     </div>
+                                    <button
+                                        onClick={() => handleGenerateKey('edit')}
+                                        disabled={isGeneratingKey !== 'idle' || !editNodeForm.ip || (!editNodeForm.root_password && !currentServer?.root_password)}
+                                        className="w-full px-4 py-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-400 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50 flex items-center justify-center">
+                                        {isGeneratingKey === 'edit' ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShieldCheck className="w-4 h-4 mr-2" />}
+                                        {isGeneratingKey === 'edit' ? 'Conectando por SSH y generando...' : 'Generar y Auto-Rellenar API Key vía SSH'}
+                                    </button>
+                                    {generateKeyError && <p className="text-rose-500 text-xs mt-2 flex items-center"><AlertTriangle className="w-3.5 h-3.5 mr-1" /> {generateKeyError}</p>}
                                     {connectionStatus === 'successEdit' && <p className="text-emerald-500 text-xs mt-2 flex items-center"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Conexión exitosa a Plesk.</p>}
                                     {connectionStatus === 'errorEdit' && <p className="text-rose-500 text-xs mt-2 flex items-center"><AlertTriangle className="w-3.5 h-3.5 mr-1" /> Fallo de conexión o credenciales inválidas.</p>}
                                 </div>
