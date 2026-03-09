@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useUser } from '@insforge/nextjs';
 import { insforge } from '@/lib/insforge';
 import {
     Users, CheckSquare, Plus, Calendar, User, Activity as ActivityIcon,
@@ -19,6 +20,7 @@ interface Client {
     phone: string;
     type: string;
     city: string;
+    status: string;
     sector?: string;
     website_url?: string;
     sitemap_url?: string;
@@ -42,10 +44,10 @@ export default function CRMApp() {
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [activities, setActivities] = useState<Activity[]>([]);
 
-    // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingClient, setEditingClient] = useState<Partial<Client> | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const { user } = useUser();
 
     useEffect(() => {
         loadData();
@@ -129,7 +131,7 @@ export default function CRMApp() {
     ];
 
     const handleOpenModal = (client?: Client) => {
-        setEditingClient(client || { first_name: '', last_name: '', email: '', phone: '', type: 'LEAD', city: '', sector: '', website_url: '', sitemap_url: '', blog_map_url: '', context_info: '', wp_url: '', wp_api_key: '' });
+        setEditingClient(client || { first_name: '', last_name: '', email: '', phone: '', type: 'LEAD', city: '', status: 'active', sector: '', website_url: '', sitemap_url: '', blog_map_url: '', context_info: '', wp_url: '', wp_api_key: '' });
         setIsModalOpen(true);
     };
 
@@ -138,21 +140,53 @@ export default function CRMApp() {
         if (!editingClient) return;
         setIsSaving(true);
         try {
-            const clientData = {
+            let currentUser: any = user;
+
+            try {
+                if (!currentUser && typeof insforge.auth?.getCurrentSession === 'function') {
+                    const { data } = await insforge.auth.getCurrentSession();
+                    currentUser = data?.session?.user;
+                }
+            } catch (err) {
+                console.warn('Could not fetch current session fallback', err);
+            }
+
+            // First, remove fields that are not part of the schema or shouldn't be blindly updated
+            if (editingClient.id === '') {
+                delete editingClient.id;
+            }
+
+            const clientData: any = {
                 ...editingClient,
-                organization_id: '00000000-0000-0000-0000-000000000000', // Default for now
-                user_id: '00000000-0000-0000-0000-000000000000', // Default for now
+                status: editingClient.status || 'active'
             };
 
-            const { error: dbError } = editingClient.id
-                ? await insforge.database.from('crm_clients').update(clientData).eq('id', editingClient.id)
+            if (currentUser) {
+                clientData.organization_id = currentUser?.user_metadata?.organization_id || currentUser?.metadata?.organization_id || currentUser.id;
+                clientData.user_id = currentUser.id;
+            }
+
+            // Remove ID for update, and fix type mapping if necessary (legacy fallback)
+            const id = clientData.id || editingClient.id;
+            delete clientData.id;
+            if (id === '') {
+                delete clientData.id;
+            }
+
+            // Legacy mapping if somehow an old client has 'CUSTOMER' or 'POTENTIAL'
+            if (clientData.type === 'CUSTOMER') clientData.type = 'CLIENT';
+            if (clientData.type === 'POTENTIAL') clientData.type = 'PROSPECT';
+
+            const { error: dbError } = (id && id !== '')
+                ? await insforge.database.from('crm_clients').update(clientData).eq('id', id)
                 : await insforge.database.from('crm_clients').insert([clientData]);
 
             if (dbError) throw dbError;
             setIsModalOpen(false);
             loadData();
         } catch (e: any) {
-            alert('Error al guardar: ' + e.message);
+            console.error('Save client error:', e);
+            alert('Error al guardar: ' + (e.message || 'Error desconocido'));
         } finally {
             setIsSaving(false);
         }
@@ -509,8 +543,10 @@ export default function CRMApp() {
                                         <label className="text-xs text-slate-500 ml-1">Tipo</label>
                                         <select value={editingClient.type} onChange={e => setEditingClient({ ...editingClient, type: e.target.value })} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500/50 focus:outline-none">
                                             <option value="LEAD">Lead</option>
-                                            <option value="CUSTOMER">Cliente</option>
-                                            <option value="POTENTIAL">Potencial</option>
+                                            <option value="PROSPECT">Prospecto</option>
+                                            <option value="CLIENT">Cliente</option>
+                                            <option value="VIP">VIP</option>
+                                            <option value="INACTIVE">Inactivo</option>
                                         </select>
                                     </div>
                                     <div className="space-y-1">
