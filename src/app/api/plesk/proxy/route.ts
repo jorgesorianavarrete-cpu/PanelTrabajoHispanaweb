@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// Ignorar advertencias de certificados autofirmados (típico en instalaciones Plesk por IP)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 const supabaseUrl = process.env.NEXT_PUBLIC_INSFORGE_BASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY || '';
 
