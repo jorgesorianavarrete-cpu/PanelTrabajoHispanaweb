@@ -211,7 +211,7 @@ export default function PleskServersApp() {
     });
     const [isSavingNode, setIsSavingNode] = useState(false);
     const [isTestingConnection, setIsTestingConnection] = useState(false);
-    const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+    const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error' | 'testingEdit' | 'successEdit' | 'errorEdit'>('idle');
     const [showRootPw, setShowRootPw] = useState(false);
     const [showPleskPw, setShowPleskPw] = useState(false);
     const [showEditNodeModal, setShowEditNodeModal] = useState(false);
@@ -242,10 +242,10 @@ export default function PleskServersApp() {
         setIsSavingApi(false);
     };
 
-    const handleTestConnection = async () => {
-        if (!newNodeForm.api_url || !newNodeForm.api_key) return;
+    const handleTestConnection = async (url: string, key: string, source: 'add' | 'edit') => {
+        if (!url || !key) return;
         setIsTestingConnection(true);
-        setConnectionStatus('testing');
+        setConnectionStatus(source === 'add' ? 'testing' : 'testingEdit');
         try {
             const res = await fetch('/api/plesk/proxy', {
                 method: 'POST',
@@ -253,14 +253,17 @@ export default function PleskServersApp() {
                 body: JSON.stringify({
                     serverId: 'demo', // bypass flag
                     endpoint: '/api/v2/server',
-                    testConfig: { api_url: newNodeForm.api_url, api_key: newNodeForm.api_key }
+                    testConfig: { api_url: url, api_key: key }
                 })
             });
             const result = await res.json();
-            if (result.success) setConnectionStatus('success');
-            else setConnectionStatus('error');
+            if (result.success) {
+                setConnectionStatus(source === 'add' ? 'success' : 'successEdit');
+            } else {
+                setConnectionStatus(source === 'add' ? 'error' : 'errorEdit');
+            }
         } catch {
-            setConnectionStatus('error');
+            setConnectionStatus(source === 'add' ? 'error' : 'errorEdit');
         }
         setIsTestingConnection(false);
     };
@@ -559,7 +562,22 @@ Sé conciso y técnico.`;
                                             className="flex-1 md:flex-none flex items-center justify-center p-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 transition-colors disabled:opacity-50" title="Detener">
                                             {actionLoading === 'stop' ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Square className="w-5 h-5 fill-current" />}
                                         </button>
-                                        <button className="flex-1 md:flex-none flex items-center justify-center px-4 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:shadow-lg transition-all font-medium">
+                                        <button
+                                            onClick={() => {
+                                                if (currentServer?.root_username && currentServer?.ip) {
+                                                    try {
+                                                        const sshUrl = `ssh://${currentServer.root_username}@${currentServer.ip}`;
+                                                        const link = document.createElement('a');
+                                                        link.href = sshUrl;
+                                                        link.click();
+                                                    } catch (e) {
+                                                        alert('No se pudo abrir el cliente SSH. Puedes usar este comando manual: ssh ' + currentServer.root_username + '@' + currentServer.ip);
+                                                    }
+                                                } else {
+                                                    alert('Faltan datos IP o Usuario Root en este servidor para la conexión SSH.');
+                                                }
+                                            }}
+                                            className="flex-1 md:flex-none flex items-center justify-center px-4 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:shadow-lg transition-all font-medium">
                                             <Terminal className="w-4 h-4 mr-2" />
                                             Abrir Consola SSH
                                         </button>
@@ -885,10 +903,10 @@ Sé conciso y técnico.`;
                                     <div className="flex gap-2">
                                         <input type="password" placeholder="Clave generada en Plesk" value={newNodeForm.api_key} onChange={e => setNewNodeForm(prev => ({ ...prev, api_key: e.target.value }))} className="flex-1 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
                                         <button
-                                            onClick={handleTestConnection}
+                                            onClick={() => handleTestConnection(newNodeForm.api_url, newNodeForm.api_key, 'add')}
                                             disabled={!newNodeForm.api_url || !newNodeForm.api_key || isTestingConnection}
                                             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap flex items-center">
-                                            {isTestingConnection ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                                            {(isTestingConnection && connectionStatus === 'testing') ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                                             Probar Conexión
                                         </button>
                                     </div>
@@ -987,7 +1005,18 @@ Sé conciso y técnico.`;
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Plesk API Key (Opcional si no se cambia)</label>
-                                    <input type="password" placeholder="Dejar en blanco para mantener la actual" value={editNodeForm.api_key} onChange={e => setEditNodeForm(prev => ({ ...prev, api_key: e.target.value }))} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                    <div className="flex gap-2">
+                                        <input type="password" placeholder="Dejar en blanco para mantener la actual" value={editNodeForm.api_key} onChange={e => setEditNodeForm(prev => ({ ...prev, api_key: e.target.value }))} className="flex-1 w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                        <button
+                                            onClick={() => handleTestConnection(editNodeForm.api_url, editNodeForm.api_key, 'edit')}
+                                            disabled={!editNodeForm.api_url || !editNodeForm.api_key || isTestingConnection}
+                                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap flex items-center">
+                                            {(isTestingConnection && connectionStatus === 'testingEdit') ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                                            Probar Conexión
+                                        </button>
+                                    </div>
+                                    {connectionStatus === 'successEdit' && <p className="text-emerald-500 text-xs mt-2 flex items-center"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Conexión exitosa a Plesk.</p>}
+                                    {connectionStatus === 'errorEdit' && <p className="text-rose-500 text-xs mt-2 flex items-center"><AlertTriangle className="w-3.5 h-3.5 mr-1" /> Fallo de conexión o credenciales inválidas.</p>}
                                 </div>
                             </div>
 
