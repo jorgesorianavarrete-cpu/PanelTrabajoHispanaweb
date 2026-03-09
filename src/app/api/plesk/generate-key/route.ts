@@ -10,7 +10,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, error: 'Faltan datos de conexión SSH (IP, usuario o contraseña)' }, { status: 400 });
         }
 
-        return new Promise((resolve) => {
+        return new Promise<NextResponse>((resolve) => {
             const conn = new Client();
             conn.on('ready', () => {
                 conn.exec('plesk bin secret_key -c -description "Hispanaweb Panel API"', (err, stream) => {
