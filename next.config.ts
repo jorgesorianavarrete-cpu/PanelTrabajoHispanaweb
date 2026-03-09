@@ -7,7 +7,7 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: ['ssh2']
 };
 
 export default withPWA(nextConfig);
