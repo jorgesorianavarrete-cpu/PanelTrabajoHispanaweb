@@ -567,9 +567,7 @@ Sé conciso y técnico.`;
                                                 if (currentServer?.root_username && currentServer?.ip) {
                                                     try {
                                                         const sshUrl = `ssh://${currentServer.root_username}@${currentServer.ip}`;
-                                                        const link = document.createElement('a');
-                                                        link.href = sshUrl;
-                                                        link.click();
+                                                        window.location.href = sshUrl;
                                                     } catch (e) {
                                                         alert('No se pudo abrir el cliente SSH. Puedes usar este comando manual: ssh ' + currentServer.root_username + '@' + currentServer.ip);
                                                     }
