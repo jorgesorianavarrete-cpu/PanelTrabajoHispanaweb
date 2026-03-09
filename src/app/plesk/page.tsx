@@ -56,8 +56,10 @@ export default function PleskServersApp() {
         customers: any[]
     }>>({});
     const [isGlobalLoading, setIsGlobalLoading] = useState(false);
+    const [hasFetchedGlobalData, setHasFetchedGlobalData] = useState(false);
 
     // Filter & Pagination State
+    const [serverSearchQuery, setServerSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'domains' | 'subscriptions' | 'customers'>('subscriptions');
     const [searchQuery, setSearchQuery] = useState('');
     const [isGlobalSearch, setIsGlobalSearch] = useState(false);
@@ -253,6 +255,7 @@ export default function PleskServersApp() {
             });
 
             setAllData(newData);
+            setHasFetchedGlobalData(true);
         } catch (e) {
             console.error('Error fetching global data:', e);
         } finally {
@@ -657,8 +660,8 @@ Sé conciso y técnico.`;
     const currentResults = isGlobalSearch ? getGlobalResults() : (activeTab === 'domains' ? domains : activeTab === 'subscriptions' ? subscriptions : customers);
 
     const filteredResults = currentResults.filter(item =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.cms?.toLowerCase().includes(searchQuery.toLowerCase())
+        String(item.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        String(item.cms || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const totalPages = Math.ceil(filteredResults.length / itemsPerPage);
@@ -729,6 +732,8 @@ Sé conciso y técnico.`;
                                 <input
                                     type="text"
                                     placeholder="Buscar servidor o IP..."
+                                    value={serverSearchQuery}
+                                    onChange={(e) => setServerSearchQuery(e.target.value)}
                                     className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl py-2.5 pl-9 pr-4 text-sm text-slate-900 dark:text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shadow-sm"
                                 />
                             </div>
@@ -737,7 +742,13 @@ Sé conciso y técnico.`;
                         <div className="flex-1 p-3 space-y-2 overflow-y-auto">
                             {/* Global Search Button */}
                             <button
-                                onClick={() => { setIsGlobalSearch(true); setActiveServerId(''); }}
+                                onClick={() => {
+                                    setIsGlobalSearch(true);
+                                    setActiveServerId('');
+                                    if (!hasFetchedGlobalData) {
+                                        fetchGlobalData();
+                                    }
+                                }}
                                 className={`w-full text-left p-4 rounded-xl border transition-all mb-4 ${isGlobalSearch
                                     ? 'bg-blue-600 text-white border-blue-500 shadow-md ring-1 ring-blue-500/20'
                                     : 'bg-white/50 dark:bg-white/5 border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:bg-white/10 shadow-sm text-slate-900 dark:text-white'
@@ -752,45 +763,50 @@ Sé conciso y técnico.`;
                                 </div>
                             </button>
 
-                            {servers.map((server) => (
-                                <button
-                                    key={server.id}
-                                    onClick={() => { setActiveServerId(server.id); setIsGlobalSearch(false); }}
-                                    className={`w-full text-left p-4 rounded-xl border transition-all ${activeServerId === server.id
-                                        ? 'bg-white dark:bg-white/10 border-blue-500/50 dark:border-blue-400/50 shadow-md ring-1 ring-blue-500/20'
-                                        : 'bg-white/50 dark:bg-white/5 border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:bg-white/10 shadow-sm'
-                                        }`}
-                                >
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div className="flex items-center space-x-2">
-                                            <Server className={`w-4 h-4 ${server.status === 'online' ? 'text-emerald-500' :
-                                                server.status === 'warning' ? 'text-amber-500' : 'text-slate-400'
-                                                }`} />
-                                            <span className="font-semibold text-sm text-slate-900 dark:text-white truncate">{server.name}</span>
+                            {servers
+                                .filter(s =>
+                                    String(s.name || '').toLowerCase().includes(serverSearchQuery.toLowerCase()) ||
+                                    String(s.ip || '').toLowerCase().includes(serverSearchQuery.toLowerCase())
+                                )
+                                .map((server) => (
+                                    <button
+                                        key={server.id}
+                                        onClick={() => { setActiveServerId(server.id); setIsGlobalSearch(false); }}
+                                        className={`w-full text-left p-4 rounded-xl border transition-all ${activeServerId === server.id
+                                            ? 'bg-white dark:bg-white/10 border-blue-500/50 dark:border-blue-400/50 shadow-md ring-1 ring-blue-500/20'
+                                            : 'bg-white/50 dark:bg-white/5 border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:bg-white/10 shadow-sm'
+                                            }`}
+                                    >
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="flex items-center space-x-2">
+                                                <Server className={`w-4 h-4 ${server.status === 'online' ? 'text-emerald-500' :
+                                                    server.status === 'warning' ? 'text-amber-500' : 'text-slate-400'
+                                                    }`} />
+                                                <span className="font-semibold text-sm text-slate-900 dark:text-white truncate">{server.name}</span>
+                                            </div>
+                                            {server.status === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />}
                                         </div>
-                                        {server.status === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />}
-                                    </div>
 
-                                    <div className="text-xs text-slate-500 dark:text-slate-400 mb-3 font-mono">
-                                        {server.ip}
-                                    </div>
+                                        <div className="text-xs text-slate-500 dark:text-slate-400 mb-3 font-mono">
+                                            {server.ip}
+                                        </div>
 
-                                    <div className="flex items-center space-x-3 text-xs font-medium">
-                                        <div className="flex items-center tooltip-trigger" title="CPU">
-                                            <Cpu className={`w-3.5 h-3.5 mr-1 ${(liveMetrics[server.id]?.cpu || server.cpu_usage) > 80 ? 'text-rose-500' : 'text-slate-400'}`} />
-                                            <span className={(liveMetrics[server.id]?.cpu || server.cpu_usage) > 80 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300'}>{liveMetrics[server.id]?.cpu || server.cpu_usage}%</span>
+                                        <div className="flex items-center space-x-3 text-xs font-medium">
+                                            <div className="flex items-center tooltip-trigger" title="CPU">
+                                                <Cpu className={`w-3.5 h-3.5 mr-1 ${(liveMetrics[server.id]?.cpu || server.cpu_usage) > 80 ? 'text-rose-500' : 'text-slate-400'}`} />
+                                                <span className={(liveMetrics[server.id]?.cpu || server.cpu_usage) > 80 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300'}>{liveMetrics[server.id]?.cpu || server.cpu_usage}%</span>
+                                            </div>
+                                            <div className="flex items-center tooltip-trigger" title="RAM">
+                                                <Activity className={`w-3.5 h-3.5 mr-1 ${(liveMetrics[server.id]?.ram || server.ram_usage) > 80 ? 'text-amber-500' : 'text-slate-400'}`} />
+                                                <span className={(liveMetrics[server.id]?.ram || server.ram_usage) > 80 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-300'}>{liveMetrics[server.id]?.ram || server.ram_usage}%</span>
+                                            </div>
+                                            <div className="flex items-center tooltip-trigger" title="Disco">
+                                                <HardDrive className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                                                <span className="text-slate-600 dark:text-slate-300">{liveMetrics[server.id]?.disk || server.disk_usage || 0}%</span>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center tooltip-trigger" title="RAM">
-                                            <Activity className={`w-3.5 h-3.5 mr-1 ${(liveMetrics[server.id]?.ram || server.ram_usage) > 80 ? 'text-amber-500' : 'text-slate-400'}`} />
-                                            <span className={(liveMetrics[server.id]?.ram || server.ram_usage) > 80 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-300'}>{liveMetrics[server.id]?.ram || server.ram_usage}%</span>
-                                        </div>
-                                        <div className="flex items-center tooltip-trigger" title="Disco">
-                                            <HardDrive className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                                            <span className="text-slate-600 dark:text-slate-300">{liveMetrics[server.id]?.disk || server.disk_usage || 0}%</span>
-                                        </div>
-                                    </div>
-                                </button>
-                            ))}
+                                    </button>
+                                ))}
                         </div>
                     </div>
 
