@@ -272,7 +272,7 @@ export default function PleskServersApp() {
 
     const handleGenerateKey = async (source: 'add' | 'edit') => {
         const form = source === 'add' ? newNodeForm : editNodeForm;
-        if (!form.ip || !form.root_username || !form.root_password) {
+        if (!form.ip || !form.root_username || (!form.root_password && !(source === 'edit' && currentServer?.root_password))) {
             setGenerateKeyError('Para generar la API Key, primero debes rellenar la IP, Usuario Root y Contraseña Root.');
             setTimeout(() => setGenerateKeyError(''), 5000);
             return;
