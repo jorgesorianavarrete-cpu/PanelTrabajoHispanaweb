@@ -288,7 +288,7 @@ export default function PleskServersApp() {
                 body: JSON.stringify({
                     ip: form.ip,
                     username: form.root_username,
-                    password: form.root_password
+                    password: form.root_password || currentServer?.root_password
                 })
             });
             const result = await res.json();
@@ -350,11 +350,11 @@ export default function PleskServersApp() {
             ip: editNodeForm.ip,
             location: editNodeForm.location,
             api_url: editNodeForm.api_url,
-            api_key: editNodeForm.api_key,
             root_username: editNodeForm.root_username,
             plesk_username: editNodeForm.plesk_username,
         };
-        // Solo actualizamos contraseñas si el usuario ha escrito algo en ellas
+        // Solo actualizamos contraseñas o claves si el usuario ha escrito algo en ellas
+        if (editNodeForm.api_key) updateData.api_key = editNodeForm.api_key;
         if (editNodeForm.root_password) updateData.root_password = editNodeForm.root_password;
         if (editNodeForm.plesk_password) updateData.plesk_password = editNodeForm.plesk_password;
 
