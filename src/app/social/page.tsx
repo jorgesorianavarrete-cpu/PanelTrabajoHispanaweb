@@ -216,27 +216,36 @@ export default function SocialMediaApp() {
 
     const fetchData = useCallback(async () => {
         setLoading(true);
-        const { data: clientsData } = await insforge.database
-            .from('crm_clients')
-            .select('*')
-            .order('first_name', { ascending: true });
+        try {
+            const { data: sessionData } = await insforge.auth.getCurrentSession();
+            const user = sessionData?.session?.user;
 
-        if (clientsData && clientsData.length > 0) {
-            setClients(clientsData as Client[]);
-            if (!activeClient && clientsData.length > 0) setActiveClient(clientsData[0].id);
+            const { data: clientsData, error: clientsError } = await insforge.database
+                .from('crm_clients')
+                .select('*')
+                .order('first_name', { ascending: true });
+
+            if (clientsError) throw clientsError;
+
+            if (clientsData && clientsData.length > 0) {
+                setClients(clientsData as Client[]);
+                if (!activeClient) setActiveClient(clientsData[0].id);
+            }
+
+            // Fetch AI Settings
+            const { data: aiData } = await insforge.database.from('ai_settings').select('key, value');
+            if (aiData) {
+                const settingsMap = aiData.reduce((acc: any, item: any) => {
+                    acc[item.key] = item.value;
+                    return acc;
+                }, {});
+                setAiSettings(prev => ({ ...prev, ...settingsMap }));
+            }
+        } catch (err) {
+            console.error('Error fetching social data:', err);
+        } finally {
+            setLoading(false);
         }
-
-        // Fetch AI Settings
-        const { data: aiData } = await insforge.database.from('ai_settings').select('key, value');
-        if (aiData) {
-            const settingsMap = aiData.reduce((acc: any, item: any) => {
-                acc[item.key] = item.value;
-                return acc;
-            }, {});
-            setAiSettings(prev => ({ ...prev, ...settingsMap }));
-        }
-
-        setLoading(false);
     }, [activeClient]);
 
     const fetchArticles = useCallback(async (clientId: string) => {
@@ -408,10 +417,35 @@ export default function SocialMediaApp() {
         }
     }, [activeClient, fetchPosts, fetchArticles]);
 
-    if (loading || !currentClient) {
+    if (loading) {
         return (
             <div className="flex-1 flex items-center justify-center bg-slate-50 dark:bg-[#0a0f1c]">
                 <div className="w-8 h-8 rounded-full border-2 border-pink-500 border-t-transparent animate-spin"></div>
+            </div>
+        );
+    }
+
+    if (!currentClient) {
+        return (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 dark:bg-[#0a0f1c] relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-bl from-pink-500/10 via-rose-500/5 to-transparent blur-3xl rounded-full pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-gradient-to-tr from-fuchsia-500/10 via-purple-500/5 to-transparent blur-3xl rounded-full pointer-events-none" />
+
+                <div className="relative z-10 flex flex-col items-center max-w-md">
+                    <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-500/20 to-indigo-600/20 flex items-center justify-center mb-6 shadow-xl">
+                        <Building className="w-10 h-10 text-blue-500" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-3">No hay clientes configurados</h2>
+                    <p className="text-slate-500 dark:text-slate-400 mb-8">
+                        Para empezar a gestionar redes sociales con IA, primero debes añadir clientes en el CRM con su información de contexto y WordPress.
+                    </p>
+                    <a
+                        href="/crm"
+                        className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/25 hover:scale-105 transition-all"
+                    >
+                        Configurar Clientes en CRM
+                    </a>
+                </div>
             </div>
         );
     }

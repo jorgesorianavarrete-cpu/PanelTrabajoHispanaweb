@@ -5,7 +5,7 @@ import {
     Server, Activity, HardDrive, Cpu, Globe,
     ShieldCheck, AlertTriangle, Play, Square,
     RefreshCw, Terminal, Search, Settings,
-    ChevronRight, ArrowUpRight, Zap, CheckCircle2, Loader2, X, GripVertical, Folder, Trash2
+    ChevronRight, ArrowUpRight, Zap, CheckCircle2, Loader2, X, GripVertical, Folder, Trash2, Eye, EyeOff, Copy
 } from 'lucide-react';
 
 import { insforge } from '@/lib/insforge';
@@ -24,6 +24,10 @@ interface ServerData {
     pending_updates: number;
     api_key?: string;
     api_url?: string;
+    root_username?: string;
+    root_password?: string;
+    plesk_username?: string;
+    plesk_password?: string;
 }
 
 interface DomainData {
@@ -41,8 +45,8 @@ export default function PleskServersApp() {
     const [isLoading, setIsLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-    // Live Metrics Simulation State
-    const [liveMetrics, setLiveMetrics] = useState<Record<string, { cpu: number, ram: number }>>({});
+    // Live Metrics State
+    const [liveMetrics, setLiveMetrics] = useState<Record<string, { cpu: number, ram: number, os_version?: string, plesk_version?: string }>>({});
 
     const [isAiScanning, setIsAiScanning] = useState(false);
     const [aiScanResult, setAiScanResult] = useState<boolean>(false);
@@ -115,39 +119,50 @@ export default function PleskServersApp() {
         if (servers.length === 0) return;
 
         // Initialize metrics state to 0 or database stored initial values
-        const initialMetrics: Record<string, { cpu: number, ram: number }> = {};
+        const initialMetrics: Record<string, { cpu: number, ram: number, os_version: string, plesk_version: string }> = {};
         servers.forEach(s => {
-            // We use 0 by default so we don't show demo data until connected
-            initialMetrics[s.id] = { cpu: 0, ram: 0 };
+            initialMetrics[s.id] = { cpu: 0, ram: 0, os_version: 'Obteniendo...', plesk_version: 'Obteniendo...' };
         });
         setLiveMetrics(initialMetrics);
 
         const fetchRealMetrics = async () => {
-            // Only fetch real metrics for the active server to save bandwidth
             if (!activeServerId) return;
 
-            // Verificamos si tiene API configurada
             const s = servers.find(sv => sv.id === activeServerId);
             if (!s || !s.api_key || !s.api_url) {
-                return; // No intentar si no hay credenciales
+                return;
             }
 
             try {
+                // Obtenemos metadata general del servidor en Plesk
                 const res = await fetch('/api/plesk/proxy', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ serverId: activeServerId, endpoint: '/api/v2/server/stat' })
+                    body: JSON.stringify({ serverId: activeServerId, endpoint: '/api/v2/server' })
                 });
                 const result = await res.json();
 
                 if (result.success && result.data) {
-                    // Plesk often returns stats under result.data (would need exact parsing based on Plesk Version)
-                    const cpu = result.data.cpu_usage ?? 0;
-                    const ram = result.data.ram_usage ?? 0;
+                    const data = result.data;
+
+                    let os_version = 'Desconocido';
+                    let plesk_version = 'Desconocido';
+
+                    if (data.stat?.version?.plesk_os) os_version = data.stat.version.plesk_os;
+                    else if (data.version?.plesk_os) os_version = data.version.plesk_os;
+                    else if (data.os) os_version = data.os;
+
+                    if (data.stat?.version?.plesk_version) plesk_version = data.stat.version.plesk_version;
+                    else if (data.version?.plesk_version) plesk_version = data.version.plesk_version;
+                    else if (data.plesk_version) plesk_version = data.plesk_version;
+
+                    // CPU / RAM real si la API lo expone, sino usamos 0 (No mocks permitidos)
+                    const cpu = data.stat?.cpu?.load ?? data.cpu_usage ?? 0;
+                    const ram = data.stat?.mem?.used ?? data.ram_usage ?? 0;
 
                     setLiveMetrics(prev => ({
                         ...prev,
-                        [activeServerId]: { cpu, ram }
+                        [activeServerId]: { cpu, ram, os_version, plesk_version }
                     }));
                 }
             } catch (e) {
@@ -155,7 +170,9 @@ export default function PleskServersApp() {
             }
         };
 
-        const interval = setInterval(fetchRealMetrics, 10000); // 10s para peticiones reales
+        // Primer fetch inmediato
+        fetchRealMetrics();
+        const interval = setInterval(fetchRealMetrics, 15000);
         return () => clearInterval(interval);
     }, [servers, activeServerId]);
 
@@ -181,15 +198,25 @@ export default function PleskServersApp() {
     };
 
     const currentServer = servers.find(s => s.id === activeServerId) || null;
-    const currentMetrics = currentServer ? (liveMetrics[currentServer.id] || { cpu: currentServer.cpu_usage, ram: currentServer.ram_usage }) : { cpu: 0, ram: 0 };
-
+    const currentMetrics = currentServer ? (liveMetrics[currentServer.id] || { cpu: currentServer.cpu_usage, ram: currentServer.ram_usage, os_version: 'Cargando...', plesk_version: 'Cargando...' }) : { cpu: 0, ram: 0, os_version: 'N/A', plesk_version: 'N/A' };
     const [aiDiagnosticText, setAiDiagnosticText] = useState<string>('');
     const [showAddNodeModal, setShowAddNodeModal] = useState(false);
     const [showApiConfigModal, setShowApiConfigModal] = useState(false);
     const [apiConfigForm, setApiConfigForm] = useState({ id: '', api_key: '', api_url: '' });
     const [isSavingApi, setIsSavingApi] = useState(false);
-    const [newNodeForm, setNewNodeForm] = useState({ name: '', ip: '', location: '' });
+    const [newNodeForm, setNewNodeForm] = useState({
+        name: '', ip: '', location: '', api_url: '', api_key: '',
+        root_username: 'root', root_password: '', plesk_username: 'admin', plesk_password: ''
+    });
     const [isSavingNode, setIsSavingNode] = useState(false);
+    const [isTestingConnection, setIsTestingConnection] = useState(false);
+    const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+    const [showRootPw, setShowRootPw] = useState(false);
+    const [showPleskPw, setShowPleskPw] = useState(false);
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text);
+    };
     const [fileManagerDomain, setFileManagerDomain] = useState<string | null>(null);
     const [isDeletingServer, setIsDeletingServer] = useState(false);
 
@@ -208,6 +235,29 @@ export default function PleskServersApp() {
         setIsSavingApi(false);
     };
 
+    const handleTestConnection = async () => {
+        if (!newNodeForm.api_url || !newNodeForm.api_key) return;
+        setIsTestingConnection(true);
+        setConnectionStatus('testing');
+        try {
+            const res = await fetch('/api/plesk/proxy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    serverId: 'demo', // bypass flag
+                    endpoint: '/api/v2/server',
+                    testConfig: { api_url: newNodeForm.api_url, api_key: newNodeForm.api_key }
+                })
+            });
+            const result = await res.json();
+            if (result.success) setConnectionStatus('success');
+            else setConnectionStatus('error');
+        } catch {
+            setConnectionStatus('error');
+        }
+        setIsTestingConnection(false);
+    };
+
     const handleAddNode = async () => {
         if (!newNodeForm.name || !newNodeForm.ip) return;
         setIsSavingNode(true);
@@ -221,10 +271,17 @@ export default function PleskServersApp() {
             disk_usage: 0,
             uptime: '0d',
             pending_updates: 0,
+            api_url: newNodeForm.api_url,
+            api_key: newNodeForm.api_key,
+            root_username: newNodeForm.root_username,
+            root_password: newNodeForm.root_password,
+            plesk_username: newNodeForm.plesk_username,
+            plesk_password: newNodeForm.plesk_password
         }]);
         if (!error) {
             setShowAddNodeModal(false);
-            setNewNodeForm({ name: '', ip: '', location: '' });
+            setNewNodeForm({ name: '', ip: '', location: '', api_url: '', api_key: '', root_username: 'root', root_password: '', plesk_username: 'admin', plesk_password: '' });
+            setConnectionStatus('idle');
             await fetchServers();
         }
         setIsSavingNode(false);
@@ -496,7 +553,7 @@ Sé conciso y técnico.`;
                                             </div>
                                             <div>
                                                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">Alerta de Rendimiento Activa</h3>
-                                                <p className="text-sm text-slate-600 dark:text-slate-300">El consumo de RAM está en 91%. El Asistente IA recomienda un escaneo para aislar el proceso problemático.</p>
+                                                <p className="text-sm text-slate-600 dark:text-slate-300">El consumo de RAM está en {currentMetrics.ram}%. El Asistente IA recomienda un escaneo para aislar el proceso problemático.</p>
                                             </div>
                                         </div>
                                         <button
@@ -640,6 +697,14 @@ Sé conciso y técnico.`;
 
                                             <div className="space-y-3 relative z-10">
                                                 <div className="flex justify-between items-center text-sm font-medium">
+                                                    <span className="text-slate-300 dark:text-slate-400">Sistema Operativo</span>
+                                                    <span className="text-slate-100 dark:text-white">{currentMetrics.os_version}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-sm font-medium">
+                                                    <span className="text-slate-300 dark:text-slate-400">Versión Plesk</span>
+                                                    <span className="text-slate-100 dark:text-white">{currentMetrics.plesk_version}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-sm font-medium pt-2 border-t border-white/10">
                                                     <span className="text-slate-300 dark:text-slate-400">Actualizaciones (OS)</span>
                                                     <span className={currentServer.pending_updates > 0 ? 'text-amber-400' : 'text-emerald-400'}>{currentServer.pending_updates} pdtes.</span>
                                                 </div>
@@ -652,6 +717,66 @@ Sé conciso y técnico.`;
                                             <button className="mt-6 w-full py-2 bg-blue-600 hover:bg-blue-500 dark:bg-blue-600 dark:hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition-colors">
                                                 Lanzar Backup Manual
                                             </button>
+                                        </div>
+
+                                        {/* Bóveda de Accesos */}
+                                        <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl p-6 shadow-sm overflow-hidden relative">
+                                            <h3 className="font-bold mb-4 flex items-center text-slate-900 dark:text-white relative z-10">
+                                                <ShieldCheck className="w-5 h-5 mr-2 text-blue-500" />
+                                                Credenciales y Acceso Seguro
+                                            </h3>
+
+                                            <div className="space-y-4 relative z-10">
+                                                {/* Acceso Root */}
+                                                <div className="bg-slate-50 dark:bg-white/5 rounded-xl p-3 border border-slate-200 dark:border-white/10">
+                                                    <div className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">Acceso SSH / Root</div>
+                                                    <div className="flex flex-col gap-2">
+                                                        <div className="flex items-center justify-between text-sm">
+                                                            <span className="text-slate-500 dark:text-slate-400 font-mono w-20">Usuario:</span>
+                                                            <span className="font-mono font-medium text-slate-900 dark:text-white">{currentServer.root_username || 'root'}</span>
+                                                            <button onClick={() => copyToClipboard(currentServer.root_username || 'root')} className="text-slate-400 hover:text-blue-500"><Copy className="w-4 h-4" /></button>
+                                                        </div>
+                                                        <div className="flex items-center justify-between text-sm">
+                                                            <span className="text-slate-500 dark:text-slate-400 font-mono w-20">Clave:</span>
+                                                            <span className="font-mono font-medium text-slate-900 dark:text-white">{showRootPw ? (currentServer.root_password || 'No definida') : '••••••••'}</span>
+                                                            <div className="flex gap-2">
+                                                                <button onClick={() => setShowRootPw(!showRootPw)} className="text-slate-400 hover:text-blue-500">
+                                                                    {showRootPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                                                </button>
+                                                                <button onClick={() => copyToClipboard(currentServer.root_password || '')} className="text-slate-400 hover:text-blue-500"><Copy className="w-4 h-4" /></button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Acceso Plesk */}
+                                                <div className="bg-slate-50 dark:bg-white/5 rounded-xl p-3 border border-slate-200 dark:border-white/10">
+                                                    <div className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">Panel Plesk</div>
+                                                    <div className="flex flex-col gap-2">
+                                                        <div className="flex items-center justify-between text-sm">
+                                                            <span className="text-slate-500 dark:text-slate-400 font-mono w-20">Usuario:</span>
+                                                            <span className="font-mono font-medium text-slate-900 dark:text-white">{currentServer.plesk_username || 'admin'}</span>
+                                                            <button onClick={() => copyToClipboard(currentServer.plesk_username || 'admin')} className="text-slate-400 hover:text-blue-500"><Copy className="w-4 h-4" /></button>
+                                                        </div>
+                                                        <div className="flex items-center justify-between text-sm">
+                                                            <span className="text-slate-500 dark:text-slate-400 font-mono w-20">Clave:</span>
+                                                            <span className="font-mono font-medium text-slate-900 dark:text-white">{showPleskPw ? (currentServer.plesk_password || 'No definida') : '••••••••'}</span>
+                                                            <div className="flex gap-2">
+                                                                <button onClick={() => setShowPleskPw(!showPleskPw)} className="text-slate-400 hover:text-blue-500">
+                                                                    {showPleskPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                                                </button>
+                                                                <button onClick={() => copyToClipboard(currentServer.plesk_password || '')} className="text-slate-400 hover:text-blue-500"><Copy className="w-4 h-4" /></button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {currentServer.api_url && (
+                                                    <button onClick={() => window.open(currentServer.api_url, '_blank')} className="w-full py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-sm font-medium transition-all shadow-md mt-2 flex justify-center items-center">
+                                                        Abrir Panel Plesk <ArrowUpRight className="w-4 h-4 ml-2" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
 
@@ -666,55 +791,100 @@ Sé conciso y técnico.`;
             {/* Add Node Modal */}
             {showAddNodeModal && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white dark:bg-[#0f1629] border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Añadir Nuevo Nodo</h2>
+                    <div className="bg-white dark:bg-[#0f1629] border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+                        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-white/10 shrink-0">
+                            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Añadir Nuevo Servidor Plesk</h2>
                             <button onClick={() => setShowAddNodeModal(false)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nombre del Servidor *</label>
-                                <input
-                                    type="text"
-                                    placeholder="ej: VPS-Madrid-01"
-                                    value={newNodeForm.name}
-                                    onChange={e => setNewNodeForm(prev => ({ ...prev, name: e.target.value }))}
-                                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                                />
+
+                        <div className="p-6 overflow-y-auto space-y-8">
+                            {/* Sección: Detalles Básicos */}
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-semibold text-slate-900 dark:text-white uppercase tracking-wider mb-2 flex items-center">
+                                    <Server className="w-4 h-4 mr-2 text-blue-500" /> Datos Básicos
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nombre *</label>
+                                        <input type="text" placeholder="ej: VPS-Madrid-01" value={newNodeForm.name} onChange={e => setNewNodeForm(prev => ({ ...prev, name: e.target.value }))} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Dirección IP *</label>
+                                        <input type="text" placeholder="ej: 192.168.1.100" value={newNodeForm.ip} onChange={e => setNewNodeForm(prev => ({ ...prev, ip: e.target.value }))} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Dirección IP *</label>
-                                <input
-                                    type="text"
-                                    placeholder="ej: 192.168.1.100"
-                                    value={newNodeForm.ip}
-                                    onChange={e => setNewNodeForm(prev => ({ ...prev, ip: e.target.value }))}
-                                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                                />
+
+                            {/* Sección: Conexión API */}
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-semibold text-slate-900 dark:text-white uppercase tracking-wider mb-2 flex items-center">
+                                    <Globe className="w-4 h-4 mr-2 text-indigo-500" /> Conexión API Plesk
+                                </h3>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">URL de la API Plesk</label>
+                                    <input type="text" placeholder="ej: https://192.168.1.100:8443" value={newNodeForm.api_url} onChange={e => setNewNodeForm(prev => ({ ...prev, api_url: e.target.value }))} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Plesk API Key (Secret Key)</label>
+                                    <div className="flex gap-2">
+                                        <input type="password" placeholder="Clave generada en Plesk" value={newNodeForm.api_key} onChange={e => setNewNodeForm(prev => ({ ...prev, api_key: e.target.value }))} className="flex-1 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                        <button
+                                            onClick={handleTestConnection}
+                                            disabled={!newNodeForm.api_url || !newNodeForm.api_key || isTestingConnection}
+                                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap flex items-center">
+                                            {isTestingConnection ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                                            Probar Conexión
+                                        </button>
+                                    </div>
+                                    {connectionStatus === 'success' && <p className="text-emerald-500 text-xs mt-2 flex items-center"><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Conexión exitosa a Plesk.</p>}
+                                    {connectionStatus === 'error' && <p className="text-rose-500 text-xs mt-2 flex items-center"><AlertTriangle className="w-3.5 h-3.5 mr-1" /> Fallo de conexión o credenciales inválidas.</p>}
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Ubicación</label>
-                                <input
-                                    type="text"
-                                    placeholder="ej: Madrid, España"
-                                    value={newNodeForm.location}
-                                    onChange={e => setNewNodeForm(prev => ({ ...prev, location: e.target.value }))}
-                                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                                />
+
+                            {/* Sección: Credenciales Bóveda */}
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-semibold text-slate-900 dark:text-white uppercase tracking-wider mb-2 flex items-center">
+                                    <ShieldCheck className="w-4 h-4 mr-2 text-emerald-500" /> Bóveda de Accesos Privados
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10 space-y-3">
+                                        <h4 className="text-xs font-semibold text-slate-500">ACCESO SSH / ROOT</h4>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Usuario</label>
+                                            <input type="text" value={newNodeForm.root_username} onChange={e => setNewNodeForm(prev => ({ ...prev, root_username: e.target.value }))} className="w-full bg-white dark:bg-[#0f1629] border border-slate-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Contraseña</label>
+                                            <input type="password" value={newNodeForm.root_password} onChange={e => setNewNodeForm(prev => ({ ...prev, root_password: e.target.value }))} className="w-full bg-white dark:bg-[#0f1629] border border-slate-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-sm" />
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10 space-y-3">
+                                        <h4 className="text-xs font-semibold text-slate-500">ACCESO PLESK PANEL</h4>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Usuario</label>
+                                            <input type="text" value={newNodeForm.plesk_username} onChange={e => setNewNodeForm(prev => ({ ...prev, plesk_username: e.target.value }))} className="w-full bg-white dark:bg-[#0f1629] border border-slate-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Contraseña</label>
+                                            <input type="password" value={newNodeForm.plesk_password} onChange={e => setNewNodeForm(prev => ({ ...prev, plesk_password: e.target.value }))} className="w-full bg-white dark:bg-[#0f1629] border border-slate-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-sm" />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div className="flex gap-3 pt-1">
-                            <button onClick={() => setShowAddNodeModal(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
+
+                        <div className="flex gap-3 p-6 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02] rounded-b-2xl shrink-0">
+                            <button onClick={() => setShowAddNodeModal(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 text-sm font-medium hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
                                 Cancelar
                             </button>
                             <button
                                 onClick={handleAddNode}
                                 disabled={isSavingNode || !newNodeForm.name || !newNodeForm.ip}
-                                className="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-bold hover:shadow-lg transition-all disabled:opacity-50"
+                                className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold shadow-md hover:from-blue-500 hover:to-indigo-500 transition-all disabled:opacity-50"
                             >
-                                {isSavingNode ? 'Guardando...' : 'Añadir Servidor'}
+                                {isSavingNode ? 'Guardando red...' : 'Registrar Servidor'}
                             </button>
                         </div>
                     </div>

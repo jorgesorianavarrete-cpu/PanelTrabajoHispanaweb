@@ -13,25 +13,36 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Faltan parámetros: serverId y endpoint requeridos' }, { status: 400 });
         }
 
-        const supabase = createClient(supabaseUrl, supabaseAnonKey);
+        // 1. Obtener credenciales del servidor desde DB o desde testConfig
+        let serverApiKey = '';
+        let serverApiUrl = '';
 
-        // 1. Obtener credenciales del servidor desde DB
-        const { data: server, error: dbError } = await supabase
-            .from('hosting_servers')
-            .select('api_key, api_url')
-            .eq('id', serverId)
-            .single();
+        if (body.testConfig && body.testConfig.api_url && body.testConfig.api_key) {
+            // Modo de prueba de conexión directa: bypass DB
+            serverApiUrl = body.testConfig.api_url;
+            serverApiKey = body.testConfig.api_key;
+        } else {
+            const supabase = createClient(supabaseUrl, supabaseAnonKey);
+            const { data: server, error: dbError } = await supabase
+                .from('hosting_servers')
+                .select('api_key, api_url')
+                .eq('id', serverId)
+                .single();
 
-        if (dbError || !server) {
-            return NextResponse.json({ error: 'Servidor no encontrado' }, { status: 404 });
-        }
+            if (dbError || !server) {
+                return NextResponse.json({ error: 'Servidor no encontrado' }, { status: 404 });
+            }
 
-        if (!server.api_key || !server.api_url) {
-            return NextResponse.json({ error: 'El servidor no tiene configurada la API Key o URL de Plesk' }, { status: 400 });
+            if (!server.api_key || !server.api_url) {
+                return NextResponse.json({ error: 'El servidor no tiene configurada la API Key o URL de Plesk' }, { status: 400 });
+            }
+
+            serverApiKey = server.api_key;
+            serverApiUrl = server.api_url;
         }
 
         // Limpieza de URL
-        let baseUrl = server.api_url.endsWith('/') ? server.api_url.slice(0, -1) : server.api_url;
+        let baseUrl = serverApiUrl.endsWith('/') ? serverApiUrl.slice(0, -1) : serverApiUrl;
         let path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
         const apiUrl = `${baseUrl}${path}`;
@@ -40,7 +51,7 @@ export async function POST(req: NextRequest) {
         const headers: Record<string, string> = {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            'X-API-Key': server.api_key
+            'X-API-Key': serverApiKey
         };
 
         const fetchOptions: RequestInit = {

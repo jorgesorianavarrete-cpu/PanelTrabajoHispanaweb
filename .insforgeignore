@@ -4,3 +4,12 @@ node_modules
 .env
 .env.local
 .DS_Store
+dist
+out
+*.zip
+*.docx
+*.pdf
+.vercel
+.turbo
+.cache
+tsconfig.tsbuildinfo
