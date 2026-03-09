@@ -86,7 +86,7 @@ export default function PleskServersApp() {
     const fetchDomains = async (serverId: string) => {
         // 1. Try real Plesk API first
         try {
-            const res = await fetch('/api/plesk/proxy', {
+            const res = await fetch(`${window.location.origin}/api/plesk/proxy`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ serverId, endpoint: '/api/v2/domains' })
@@ -130,13 +130,13 @@ export default function PleskServersApp() {
             if (!activeServerId) return;
 
             const s = servers.find(sv => sv.id === activeServerId);
-            if (!s || !s.api_key || !s.api_url) {
+            if (!s || !s.api_key) {
                 return;
             }
 
             try {
                 // Obtenemos metadata general del servidor en Plesk
-                const res = await fetch('/api/plesk/proxy', {
+                const res = await fetch(`${window.location.origin}/api/plesk/proxy`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ serverId: activeServerId, endpoint: '/api/v2/server' })
@@ -182,7 +182,7 @@ export default function PleskServersApp() {
         setActionLoading(action);
 
         try {
-            const res = await fetch('/api/plesk/reboot', {
+            const res = await fetch(`${window.location.origin}/api/plesk/reboot`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ serverId: currentServer.id, action })
@@ -249,7 +249,7 @@ export default function PleskServersApp() {
         setIsTestingConnection(true);
         setConnectionStatus(source === 'add' ? 'testing' : 'testingEdit');
         try {
-            const res = await fetch('/api/plesk/proxy', {
+            const res = await fetch(`${window.location.origin}/api/plesk/proxy`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -282,7 +282,7 @@ export default function PleskServersApp() {
         setGenerateKeyError('');
 
         try {
-            const res = await fetch('/api/plesk/generate-key', {
+            const res = await fetch(`${window.location.origin}/api/plesk/generate-key`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -323,7 +323,7 @@ export default function PleskServersApp() {
             disk_usage: 0,
             uptime: '0d',
             pending_updates: 0,
-            api_url: newNodeForm.api_url,
+            api_url: newNodeForm.api_url || `https://${newNodeForm.ip}:8443`,
             api_key: newNodeForm.api_key,
             root_username: newNodeForm.root_username,
             root_password: newNodeForm.root_password,
@@ -349,7 +349,7 @@ export default function PleskServersApp() {
             name: editNodeForm.name,
             ip: editNodeForm.ip,
             location: editNodeForm.location,
-            api_url: editNodeForm.api_url,
+            api_url: editNodeForm.api_url || `https://${editNodeForm.ip}:8443`,
             root_username: editNodeForm.root_username,
             plesk_username: editNodeForm.plesk_username,
         };
@@ -944,8 +944,10 @@ Sé conciso y técnico.`;
                                         <input type="password" placeholder="Clave generada en Plesk" value={newNodeForm.api_key} onChange={e => setNewNodeForm(prev => ({ ...prev, api_key: e.target.value }))} className="flex-1 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
                                         <button
                                             onClick={() => handleTestConnection(newNodeForm.api_url, newNodeForm.api_key, 'add')}
-                                            disabled={!newNodeForm.api_url || !newNodeForm.api_key || isTestingConnection}
-                                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap flex items-center">
+                                            disabled={!newNodeForm.api_key || isTestingConnection}
+                                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap flex items-center"
+                                            title="La URL se generará automáticamente usando el puerto 8443 si se deja en blanco"
+                                        >
                                             {(isTestingConnection && connectionStatus === 'testing') ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                                             Probar Conexión
                                         </button>
@@ -1057,8 +1059,10 @@ Sé conciso y técnico.`;
                                         <input type="password" placeholder="Dejar en blanco para mantener la actual" value={editNodeForm.api_key} onChange={e => setEditNodeForm(prev => ({ ...prev, api_key: e.target.value }))} className="flex-1 w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
                                         <button
                                             onClick={() => handleTestConnection(editNodeForm.api_url, editNodeForm.api_key, 'edit')}
-                                            disabled={!editNodeForm.api_url || !editNodeForm.api_key || isTestingConnection}
-                                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap flex items-center">
+                                            disabled={!editNodeForm.api_key || isTestingConnection}
+                                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap flex items-center"
+                                            title="La URL se generará automáticamente usando el puerto 8443 si se deja en blanco"
+                                        >
                                             {(isTestingConnection && connectionStatus === 'testingEdit') ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                                             Probar Conexión
                                         </button>

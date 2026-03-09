@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-
+import https from 'https';
 // Ignorar advertencias de certificados autofirmados (típico en instalaciones Plesk por IP)
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
             const supabase = createClient(supabaseUrl, supabaseAnonKey);
             const { data: server, error: dbError } = await supabase
                 .from('hosting_servers')
-                .select('api_key, api_url')
+                .select('api_key, api_url, ip')
                 .eq('id', serverId)
                 .single();
 
@@ -36,12 +36,12 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: 'Servidor no encontrado' }, { status: 404 });
             }
 
-            if (!server.api_key || !server.api_url) {
-                return NextResponse.json({ error: 'El servidor no tiene configurada la API Key o URL de Plesk' }, { status: 400 });
+            if (!server.api_key) {
+                return NextResponse.json({ error: 'El servidor no tiene configurada la API Key' }, { status: 400 });
             }
 
             serverApiKey = server.api_key;
-            serverApiUrl = server.api_url;
+            serverApiUrl = server.api_url || `https://${server.ip}:8443`;
         }
 
         // Limpieza de URL robusta
@@ -69,22 +69,55 @@ export async function POST(req: NextRequest) {
         if (payload && ['POST', 'PUT', 'PATCH'].includes(fetchOptions.method as string)) {
             fetchOptions.body = JSON.stringify(payload);
         }
+        const { hostname, port, pathname, search } = new URL(apiUrl);
 
-        // Importante: Plesk usa certificados autofirmados muchas veces, lo ideal sería tener agent proxy aquí, pero en un entorno Edge (Vercel) no podemos saltarnos tls unauthorized tan fácil.
-        // Simularemos o reenviaremos. Vercel a veces arroja error con autofirmados, pero lo dejamos genérico.
-        // Plesk API en la mayoría de puertos 8443 requiere que se acepte TLS.
-        const pleskResponse = await fetch(apiUrl, fetchOptions);
+        let responseData: string = '';
+        let statusCode = 200;
+
+        await new Promise<void>((resolve, reject) => {
+            const agent = new https.Agent({
+                rejectUnauthorized: false
+            });
+
+            const reqOptions: https.RequestOptions = {
+                hostname,
+                port: port || 443,
+                path: `${pathname}${search}`,
+                method: method.toUpperCase(),
+                headers,
+                agent
+            };
+
+            const clientReq = https.request(reqOptions, (res) => {
+                statusCode = res.statusCode || 200;
+                res.on('data', (chunk) => {
+                    responseData += chunk;
+                });
+                res.on('end', () => {
+                    resolve();
+                });
+            });
+
+            clientReq.on('error', (err) => {
+                reject(err);
+            });
+
+            if (payload && ['POST', 'PUT', 'PATCH'].includes(reqOptions.method as string)) {
+                clientReq.write(JSON.stringify(payload));
+            }
+
+            clientReq.end();
+        });
 
         let data;
-        const textResponse = await pleskResponse.text();
         try {
-            data = textResponse ? JSON.parse(textResponse) : {};
+            data = responseData ? JSON.parse(responseData) : {};
         } catch {
-            data = textResponse; // En caso de que Plesk devuelva texto plano
+            data = responseData; // En caso de que Plesk devuelva texto plano
         }
 
-        if (!pleskResponse.ok) {
-            return NextResponse.json({ error: 'Error en la API de Plesk', details: data }, { status: pleskResponse.status });
+        if (statusCode < 200 || statusCode >= 300) {
+            return NextResponse.json({ error: 'Error en la API de Plesk', details: data }, { status: statusCode });
         }
 
         return NextResponse.json({ success: true, data });
