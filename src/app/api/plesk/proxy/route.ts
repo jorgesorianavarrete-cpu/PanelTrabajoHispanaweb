@@ -44,8 +44,12 @@ export async function POST(req: NextRequest) {
             serverApiUrl = server.api_url;
         }
 
-        // Limpieza de URL
-        let baseUrl = serverApiUrl.endsWith('/') ? serverApiUrl.slice(0, -1) : serverApiUrl;
+        // Limpieza de URL robusta
+        let rawUrl = serverApiUrl.trim().replace(/\s+/g, '');
+        if (!rawUrl.startsWith('http')) {
+            rawUrl = `https://${rawUrl}`;
+        }
+        let baseUrl = rawUrl.endsWith('/') ? rawUrl.slice(0, -1) : rawUrl;
         let path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
         const apiUrl = `${baseUrl}${path}`;

@@ -22,6 +22,7 @@ interface ServerData {
     disk_usage: number;
     uptime: string;
     pending_updates: number;
+    location?: string;
     api_key?: string;
     api_url?: string;
     root_username?: string;
@@ -213,6 +214,12 @@ export default function PleskServersApp() {
     const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
     const [showRootPw, setShowRootPw] = useState(false);
     const [showPleskPw, setShowPleskPw] = useState(false);
+    const [showEditNodeModal, setShowEditNodeModal] = useState(false);
+    const [isUpdatingNode, setIsUpdatingNode] = useState(false);
+    const [editNodeForm, setEditNodeForm] = useState({
+        id: '', name: '', ip: '', location: '', api_url: '', api_key: '',
+        root_username: 'root', root_password: '', plesk_username: 'admin', plesk_password: ''
+    });
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
@@ -288,6 +295,36 @@ export default function PleskServersApp() {
             alert('Error al guardar: ' + error.message);
         }
         setIsSavingNode(false);
+    };
+
+    const handleUpdateNode = async () => {
+        if (!editNodeForm.name || !editNodeForm.ip || !editNodeForm.id) return;
+        setIsUpdatingNode(true);
+        const updateData: any = {
+            name: editNodeForm.name,
+            ip: editNodeForm.ip,
+            location: editNodeForm.location,
+            api_url: editNodeForm.api_url,
+            api_key: editNodeForm.api_key,
+            root_username: editNodeForm.root_username,
+            plesk_username: editNodeForm.plesk_username,
+        };
+        // Solo actualizamos contraseñas si el usuario ha escrito algo en ellas
+        if (editNodeForm.root_password) updateData.root_password = editNodeForm.root_password;
+        if (editNodeForm.plesk_password) updateData.plesk_password = editNodeForm.plesk_password;
+
+        const { error } = await insforge.database.from('hosting_servers')
+            .update(updateData)
+            .eq('id', editNodeForm.id);
+
+        if (!error) {
+            setShowEditNodeModal(false);
+            await fetchServers();
+        } else {
+            console.error('Update error', error);
+            alert('Error al guardar: ' + error.message);
+        }
+        setIsUpdatingNode(false);
     };
 
     const handleDeleteServer = async () => {
@@ -535,6 +572,20 @@ Sé conciso y técnico.`;
                                         >
                                             <Settings className="w-4 h-4 mr-2" />
                                             API Plesk
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setEditNodeForm({
+                                                    id: currentServer.id, name: currentServer.name, ip: currentServer.ip, location: currentServer.location || '',
+                                                    api_url: currentServer.api_url || '', api_key: currentServer.api_key || '',
+                                                    root_username: currentServer.root_username || 'root', root_password: '',
+                                                    plesk_username: currentServer.plesk_username || 'admin', plesk_password: ''
+                                                });
+                                                setShowEditNodeModal(true);
+                                            }}
+                                            className="flex-1 md:flex-none flex items-center justify-center p-2.5 rounded-xl border border-blue-200 dark:border-blue-500/20 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 transition-colors" title="Editar Servidor"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
                                         </button>
                                         <button
                                             onClick={handleDeleteServer}
@@ -888,6 +939,99 @@ Sé conciso y técnico.`;
                                 className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold shadow-md hover:from-blue-500 hover:to-indigo-500 transition-all disabled:opacity-50"
                             >
                                 {isSavingNode ? 'Guardando red...' : 'Registrar Servidor'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Node Modal */}
+            {showEditNodeModal && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-[#0f1629] border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+                        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-white/10 shrink-0">
+                            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Editar Servidor Plesk</h2>
+                            <button onClick={() => setShowEditNodeModal(false)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto space-y-8">
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-semibold text-slate-900 dark:text-white uppercase tracking-wider mb-2 flex items-center">
+                                    <Server className="w-4 h-4 mr-2 text-blue-500" /> Datos Básicos
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nombre *</label>
+                                        <input type="text" placeholder="ej: VPS-Madrid-01" value={editNodeForm.name} onChange={e => setEditNodeForm(prev => ({ ...prev, name: e.target.value }))} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Dirección IP *</label>
+                                        <input type="text" placeholder="ej: 192.168.1.100" value={editNodeForm.ip} onChange={e => setEditNodeForm(prev => ({ ...prev, ip: e.target.value }))} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Localización (Geográfica / DC)</label>
+                                        <input type="text" placeholder="ej: Madrid, ES" value={editNodeForm.location} onChange={e => setEditNodeForm(prev => ({ ...prev, location: e.target.value }))} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-semibold text-slate-900 dark:text-white uppercase tracking-wider mb-2 flex items-center">
+                                    <Globe className="w-4 h-4 mr-2 text-indigo-500" /> Conexión API Plesk
+                                </h3>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">URL de la API Plesk</label>
+                                    <input type="text" placeholder="ej: https://192.168.1.100:8443" value={editNodeForm.api_url} onChange={e => setEditNodeForm(prev => ({ ...prev, api_url: e.target.value }))} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Plesk API Key (Opcional si no se cambia)</label>
+                                    <input type="password" placeholder="Dejar en blanco para mantener la actual" value={editNodeForm.api_key} onChange={e => setEditNodeForm(prev => ({ ...prev, api_key: e.target.value }))} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-semibold text-slate-900 dark:text-white uppercase tracking-wider mb-2 flex items-center">
+                                    <ShieldCheck className="w-4 h-4 mr-2 text-emerald-500" /> Bóveda de Accesos Privados
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10 space-y-3">
+                                        <h4 className="text-xs font-semibold text-slate-500">ACCESO SSH / ROOT</h4>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Usuario</label>
+                                            <input type="text" value={editNodeForm.root_username} onChange={e => setEditNodeForm(prev => ({ ...prev, root_username: e.target.value }))} className="w-full bg-white dark:bg-[#0f1629] border border-slate-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Contraseña (Opcional)</label>
+                                            <input type="password" placeholder="Dejar en blanco para mantener" value={editNodeForm.root_password} onChange={e => setEditNodeForm(prev => ({ ...prev, root_password: e.target.value }))} className="w-full bg-white dark:bg-[#0f1629] border border-slate-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-sm" />
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10 space-y-3">
+                                        <h4 className="text-xs font-semibold text-slate-500">ACCESO PLESK PANEL</h4>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Usuario</label>
+                                            <input type="text" value={editNodeForm.plesk_username} onChange={e => setEditNodeForm(prev => ({ ...prev, plesk_username: e.target.value }))} className="w-full bg-white dark:bg-[#0f1629] border border-slate-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Contraseña (Opcional)</label>
+                                            <input type="password" placeholder="Dejar en blanco para mantener" value={editNodeForm.plesk_password} onChange={e => setEditNodeForm(prev => ({ ...prev, plesk_password: e.target.value }))} className="w-full bg-white dark:bg-[#0f1629] border border-slate-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-sm" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 p-6 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02] rounded-b-2xl shrink-0">
+                            <button onClick={() => setShowEditNodeModal(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 text-sm font-medium hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleUpdateNode}
+                                disabled={isUpdatingNode || !editNodeForm.name || !editNodeForm.ip}
+                                className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold shadow-md hover:from-blue-500 hover:to-indigo-500 transition-all disabled:opacity-50"
+                            >
+                                {isUpdatingNode ? 'Guardando...' : 'Guardar Cambios'}
                             </button>
                         </div>
                     </div>
