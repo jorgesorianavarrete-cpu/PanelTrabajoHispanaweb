@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { insforge } from '@/lib/insforge';
 import https from 'https';
 // Ignorar advertencias de certificados autofirmados (típico en instalaciones Plesk por IP)
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_INSFORGE_BASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY || '';
 
 export async function POST(req: NextRequest) {
     try {
@@ -25,8 +22,7 @@ export async function POST(req: NextRequest) {
             serverApiUrl = body.testConfig.api_url;
             serverApiKey = body.testConfig.api_key;
         } else {
-            const supabase = createClient(supabaseUrl, supabaseAnonKey);
-            const { data: server, error: dbError } = await supabase
+            const { data: server, error: dbError } = await insforge.database
                 .from('hosting_servers')
                 .select('api_key, api_url, ip')
                 .eq('id', serverId)

@@ -1,11 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_INSFORGE_BASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY || '';
-
-// We need the service role key to forcefully update, or use Anon if RLS permits
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { insforge } from '@/lib/insforge';
 
 export async function POST(req: Request) {
     try {
@@ -18,7 +12,7 @@ export async function POST(req: Request) {
 
         // Simular un retardo de conexión SSH y estado intermedio
         if (action === 'reboot') {
-            await supabase.from('hosting_servers').update({ status: 'rebooting' }).eq('id', serverId);
+            await insforge.database.from('hosting_servers').update({ status: 'rebooting' }).eq('id', serverId);
         }
 
         await new Promise(res => setTimeout(res, 3000));
@@ -30,7 +24,7 @@ export async function POST(req: Request) {
             newStatus = 'online';
         }
 
-        const { error } = await supabase
+        const { error } = await insforge.database
             .from('hosting_servers')
             .update({
                 status: newStatus,
