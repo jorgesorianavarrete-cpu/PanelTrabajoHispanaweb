@@ -6,6 +6,7 @@ import { Folder, File, ArrowLeft, Download, Trash2, Edit2, Loader2, UploadCloud,
 interface FileManagerProps {
     serverId: string;
     domainName: string;
+    wwwRoot?: string;
     onClose: () => void;
 }
 
@@ -17,10 +18,10 @@ interface PleskFile {
     permissions: string;
 }
 
-export default function FileManager({ serverId, domainName, onClose }: FileManagerProps) {
+export default function FileManager({ serverId, domainName, wwwRoot, onClose }: FileManagerProps) {
     // El docroot típico en Plesk es /var/www/vhosts/dominio.com/httpdocs o similares.
     // Usaremos un path base y permitiremos navegación.
-    const initialPath = `/var/www/vhosts/${domainName}`;
+    const initialPath = wwwRoot || `/var/www/vhosts/${domainName}`;
     const [currentPath, setCurrentPath] = useState(initialPath);
     const [files, setFiles] = useState<PleskFile[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -35,7 +36,7 @@ export default function FileManager({ serverId, domainName, onClose }: FileManag
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     serverId,
-                    endpoint: `/api/v2/fs/?file=${encodeURIComponent(path)}&detail=true`
+                    endpoint: `/api/v2/fs?file=${encodeURIComponent(path)}&detail=true`
                 })
             });
             const result = await res.json();
